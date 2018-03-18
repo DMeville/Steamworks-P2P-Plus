@@ -13,6 +13,11 @@ public class NetworkManager:SerializedMonoBehaviour {
     public float updateTimer = 5f; //update session state every 5 seconds
     private float _updateTimer = 0f;
 
+    public int networkSimulationRate = 20; //# of packets to send per second (at 60fps)
+    private float networkSimulationTimer; //should this be frame based? maybe? idk for now just do it based on a timer
+    private float _networkSimulationTimer; //should happen on fixedUpdate at least
+    public float keepAliveTimer = 15f; //seconds
+
     public SteamConnection me;
     public Dictionary<ulong, SteamConnection> connections = new Dictionary<ulong, SteamConnection>();
     private int connectionCounter = 0;
@@ -30,10 +35,14 @@ public class NetworkManager:SerializedMonoBehaviour {
         DontDestroyOnLoad(this.gameObject);
         instance = this;
 
+        networkSimulationTimer = (1f / 60f) * (60f / networkSimulationRate); 
         //register internal message types
         RegisterMessageType("ConnectRequest", null, null, OnRecConnectRequest);
         RegisterMessageType("ConnectResponse", SConnectResponse, DConnectResponse, OnRecConnectRequestResponse);
+        RegisterMessageType("KeepAlive", null, null, OnRecKeepAlive);
         RegisterMessageType("TestInt", STestInt, DTestInt, OnRecTestInt);
+        RegisterMessageType("Ping", null, null, OnRecPing); 
+        RegisterMessageType("Pong", null, null, OnRecPong);
         //RegisterMessageType("ConnectResponse", SConnectResponse, DConnectionResponse, OnRecConnectionResponse);
         //RegisterMessageType("KeepAlive", SKeepAlive, DKeepAlive, OnRecKeepAlive);
     }
@@ -138,6 +147,24 @@ public class NetworkManager:SerializedMonoBehaviour {
     }
     // ----- 
 
+    public void OnRecKeepAlive(ulong sender, params object[] args) {
+        connections[sender].timeSinceLastMsg = 0f;
+    }
+
+    //--
+    public void OnRecPing(ulong sender, params object[] args) {
+        QueueMessage(sender, "Pong");
+    }
+
+
+    public void OnRecPong(ulong sender, params object[] args) {
+        //calculate ping
+        float pingSendTime = connections[sender].openPings[0];
+        float pingRecTime = Time.realtimeSinceStartup;
+        connections[sender].ping = (int)((pingRecTime - pingSendTime)*1000f / 2f);
+        //Debug.Log(string.Format("{0} - {1} - {2}", pingSendTime, pingRecTime, (int)((pingRecTime - pingSendTime)*1000f / 2f)));
+        connections[sender].openPings.RemoveAt(0);
+    }
     //queue message to go out in the next packet (will be priority filtering eventually.
     public void QueueMessage(ulong sendTo, string msgCode, params object[] args) {
         int iMsgCode = GetMessageCode(msgCode);
@@ -179,6 +206,9 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     //wrapper
     public bool SendP2PData(ulong steamID, byte[] data, int length, Networking.SendType sendType = Networking.SendType.Reliable, int channel = 0) {
+        if(connections.ContainsKey(steamID)) {
+            connections[steamID].timeSinceLastMsg = 0f;
+        } //otherwise we just haven't established the connection yet (as this must be a connect request message)
         return Client.Instance.Networking.SendP2PPacket(steamID, data, data.Length, sendType, channel);
     }
 
@@ -220,6 +250,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         SteamConnection c = new SteamConnection();
         c.steamID = steamID;
         c.connectionIndex = playerNum;
+        c.connectionEstablishedTime = Time.realtimeSinceStartup;
         connections.Add(c.steamID, c);
     }
 
@@ -261,7 +292,7 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     //Update just handles checking the session state of all current connections, and if anyone has timed out/disconnected
     //remove them from the connection list and do a bit of cleaup
-    public void Update() {
+    public void FixedUpdate() {
         _updateTimer -= Time.deltaTime;
         if(_updateTimer <= 0f) {
             _updateTimer = updateTimer;
@@ -278,6 +309,37 @@ public class NetworkManager:SerializedMonoBehaviour {
                 Disconnect(disconnects[i]);
             }
         }
+
+        _networkSimulationTimer -= Time.fixedDeltaTime;
+        foreach(var kvp in connections) {
+            kvp.Value.timeSinceLastMsg += Time.fixedDeltaTime;
+        }
+
+        if(_networkSimulationTimer <= 0f) {
+            _networkSimulationTimer = networkSimulationTimer;
+            //SendMessages();
+
+            foreach(var kvp in connections) {
+                SteamConnection c = kvp.Value;
+                if(me.HasAuthOver(c)) {//only send keepalives if you're the responsible one in this relationship
+                    if(c.timeSinceLastMsg >= keepAliveTimer) { //15 seconds?
+                        //NetworkManager.instance.QueueMessage(c.steamID, "Ping");
+                        //c.openPings.Add(Time.realtimeSinceStartup);
+                        NetworkManager.instance.QueueMessage(c.steamID, "KeepAlive");
+                    }
+                }
+            }
+            //we need a message queue per connection
+            //and we need to know when was the last time we received anything from the connection
+            //if we're the high
+            //figure out if we need to send a keep alive packet
+            //when was the last time we
+        }
+    }
+
+    public void Simulate() {
+        //loop through our message queue and try to pack everything into a packet and send it off
+        //we should also simulate entities/state data here to auto-replicate to everyone? idk
     }
 
     //cleanup method.  Closes all sessions when we close the game, this makes it so 

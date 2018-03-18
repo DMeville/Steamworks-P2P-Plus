@@ -468,8 +468,8 @@ MonoBehaviour:
   updateTimer: 5
   me:
     steamID: 0
-    playerNum: 0
-  MessageTypeNames: []
+    connectionIndex: 0
+  MessageCodes: []
 --- !u!1 &962110708
 GameObject:
   m_ObjectHideFlags: 0

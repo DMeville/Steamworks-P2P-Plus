@@ -58,7 +58,6 @@ public class SteamClient : MonoBehaviour
         client.Networking.OnP2PData = OnP2PData;
         client.Networking.OnIncomingConnection = OnIncommingConnection;
         client.Networking.OnConnectionFailed = OnConnectionFailed;
-
     }
 
     //public byte[] S(int msgType, params object[] args) {
