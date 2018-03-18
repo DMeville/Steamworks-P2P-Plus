@@ -146,7 +146,7 @@ public class SteamClient : MonoBehaviour
                 //should be persistant in the world...
             }
 
-            GUILayout.Label(string.Format("State: {0} - Relay: {1} - Packets: {2} - Bytes:{3}", connectionState, k.Value.connectionState.UsingRelay, k.Value.connectionState.PacketsQueuedForSend, k.Value.connectionState.BytesQueuedForSend));
+            GUILayout.Label(string.Format("State: {0} - Relay: {1} - Packets: {2} - Bytes:{3} - Ping:{4}", connectionState, k.Value.connectionState.UsingRelay, k.Value.connectionState.PacketsQueuedForSend, k.Value.connectionState.BytesQueuedForSend, k.Value.ping));
             GUILayout.BeginHorizontal();
 
             if(GUILayout.Button("SendP2P")) {

@@ -24,5 +24,12 @@ public class SteamConnection {
     public bool HasAuthOver(SteamConnection c) {
         return connectionIndex < c.connectionIndex;
     }
+
+    //starts the ping->pong->pung sequence so we can calculate ping
+    //on both sides between this connection and me
+    public void Ping() {
+        NetworkManager.instance.SendMessage(steamID, "Ping");
+        openPings.Add(Time.realtimeSinceStartup);
+    }
 }
 

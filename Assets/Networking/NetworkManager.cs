@@ -43,6 +43,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         RegisterMessageType("TestInt", STestInt, DTestInt, OnRecTestInt);
         RegisterMessageType("Ping", null, null, OnRecPing); 
         RegisterMessageType("Pong", null, null, OnRecPong);
+        RegisterMessageType("Pung", null, null, OnRecPung); //lulwut. Ping -> Pong -> Pung so we can get the ping on both sides we need two timestamps on each side. There must be a better way
         //RegisterMessageType("ConnectResponse", SConnectResponse, DConnectionResponse, OnRecConnectionResponse);
         //RegisterMessageType("KeepAlive", SKeepAlive, DKeepAlive, OnRecKeepAlive);
     }
@@ -153,7 +154,8 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     //--
     public void OnRecPing(ulong sender, params object[] args) {
-        QueueMessage(sender, "Pong");
+        SendMessage(sender, "Pong");
+        connections[sender].openPings.Add(Time.realtimeSinceStartup);
     }
 
 
@@ -162,6 +164,15 @@ public class NetworkManager:SerializedMonoBehaviour {
         float pingSendTime = connections[sender].openPings[0];
         float pingRecTime = Time.realtimeSinceStartup;
         connections[sender].ping = (int)((pingRecTime - pingSendTime)*1000f / 2f);
+        //Debug.Log(string.Format("{0} - {1} - {2}", pingSendTime, pingRecTime, (int)((pingRecTime - pingSendTime)*1000f / 2f)));
+        connections[sender].openPings.RemoveAt(0);
+        SendMessage(sender, "Pung");
+    }
+
+    public void OnRecPung(ulong sender, params object[] args) {
+        float pingSendTime = connections[sender].openPings[0];
+        float pingRecTime = Time.realtimeSinceStartup;
+        connections[sender].ping = (int)((pingRecTime - pingSendTime) * 1000f / 2f);
         //Debug.Log(string.Format("{0} - {1} - {2}", pingSendTime, pingRecTime, (int)((pingRecTime - pingSendTime)*1000f / 2f)));
         connections[sender].openPings.RemoveAt(0);
     }
@@ -226,7 +237,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         byte[] msgCodeBytes = bytes.Take(1).ToArray();
 
         int msgCode = msgCodeBytes[0];
-        Debug.Log("[REC]" + MessageCodes[msgCode]);
+        Debug.Log("[REC] " + MessageCodes[msgCode]);
 
         byte[] msgData = null;
         if(DeserializeActions[msgCode] != null) {
@@ -330,9 +341,7 @@ public class NetworkManager:SerializedMonoBehaviour {
                 SteamConnection c = kvp.Value;
                 if(me.HasAuthOver(c)) {//only send keepalives if you're the responsible one in this relationship
                     if(c.timeSinceLastMsg >= keepAliveTimer) { //15 seconds?
-                        //NetworkManager.instance.QueueMessage(c.steamID, "Ping");
-                        //c.openPings.Add(Time.realtimeSinceStartup);
-                        NetworkManager.instance.SendMessage(c.steamID, "KeepAlive");
+                        c.Ping();
                     }
                 }
             }

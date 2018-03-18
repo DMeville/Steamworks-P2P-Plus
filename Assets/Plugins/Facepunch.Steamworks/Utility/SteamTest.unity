@@ -466,9 +466,15 @@ MonoBehaviour:
       Entry: 8
       Data: 
   updateTimer: 5
+  networkSimulationRate: 20
+  keepAliveTimer: 15
   me:
     steamID: 0
     connectionIndex: 0
+    ping: 0
+    openPings: []
+    connectionEstablishedTime: 0
+    timeSinceLastMsg: 0
   MessageCodes: []
 --- !u!1 &962110708
 GameObject:
