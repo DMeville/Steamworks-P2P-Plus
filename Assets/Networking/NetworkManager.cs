@@ -10,17 +10,14 @@ using System;
 public class NetworkManager:SerializedMonoBehaviour {
     public static NetworkManager instance;
 
-    public float updateTimer = 5f; //update session state every 5 seconds
-    private float _updateTimer = 0f;
-
     public int networkSimulationRate = 20; //# of packets to send per second (at 60fps)
     private float networkSimulationTimer; //should this be frame based? maybe? idk for now just do it based on a timer
     private float _networkSimulationTimer; //should happen on fixedUpdate at least
-    public float keepAliveTimer = 15f; //seconds
+    public float keepAliveTimer = 10f; //seconds
 
     public SteamConnection me;
     public Dictionary<ulong, SteamConnection> connections = new Dictionary<ulong, SteamConnection>();
-    private int connectionCounter = 0;
+    public int connectionCounter = 0;
 
     public List<string> MessageCodes = new List<string>();
     public List<SerializerAction> SerializeActions = new List<SerializerAction>();
@@ -35,17 +32,9 @@ public class NetworkManager:SerializedMonoBehaviour {
         DontDestroyOnLoad(this.gameObject);
         instance = this;
 
-        networkSimulationTimer = (1f / 60f) * (60f / networkSimulationRate); 
+        networkSimulationTimer = (1f / 60f) * (60f / networkSimulationRate);
         //register internal message types
-        RegisterMessageType("ConnectRequest", null, null, OnRecConnectRequest);
-        RegisterMessageType("ConnectResponse", SConnectResponse, DConnectResponse, OnRecConnectRequestResponse);
-        RegisterMessageType("KeepAlive", null, null, OnRecKeepAlive);
-        RegisterMessageType("TestInt", STestInt, DTestInt, OnRecTestInt);
-        RegisterMessageType("Ping", null, null, OnRecPing); 
-        RegisterMessageType("Pong", null, null, OnRecPong);
-        RegisterMessageType("Pung", null, null, OnRecPung); //lulwut. Ping -> Pong -> Pung so we can get the ping on both sides we need two timestamps on each side. There must be a better way
-        //RegisterMessageType("ConnectResponse", SConnectResponse, DConnectionResponse, OnRecConnectionResponse);
-        //RegisterMessageType("KeepAlive", SKeepAlive, DKeepAlive, OnRecKeepAlive);
+        RegisterInternalMessages.Register(); //to tidy it up, moved all this stuff to a nother class
     }
 
     #region Message Definition Helpers
@@ -73,109 +62,14 @@ public class NetworkManager:SerializedMonoBehaviour {
     }
     #endregion
 
-
-    public void OnRecConnectRequest(ulong sender, params object[] args) {
-        //no args
-        Debug.Log("OnRecConnectionRequest sender: " + sender);
-        //add the senders ID to our connections list
-        connectionCounter++;
-        RegisterConnection(sender, connectionCounter);
-
-        QueueMessage(sender, "ConnectResponse", true, me.connectionIndex, connectionCounter);
-        //send back a packet to the sender if we want to accept the connection, otherwise just ignore it.
+    public int GetMessageCode(string messageName) {
+        if(MessageCodes.Contains(messageName)) {
+            return MessageCodes.IndexOf(messageName);
+        }
+        throw new Exception("Message with name [" + messageName + "] does not exist");
+        return -1;
     }
 
-
-    //ConnectionResponse Serailize/Deserialize/Process methods
-    //this message has two properties. 
-    //arg[0] is a bool that says if our connect request was accepted (which is kind of redundant because we wouldn't get a response if it was rejected anyways)
-    //arg[1] is an int telling us what connectionIndex the host is assigned assigned.
-    //arg[2] is an int telling us what connectionIndex the host assigned us.
-    public byte[] SConnectResponse(int msgCode, params object[] args) {
-        byte[] data = new byte[0];
-
-        //we need to know what data were are sending with each msg, but to keep it modular we need to cast to types here
-        bool arg0 = (bool)args[0]; 
-        int arg1 = (int)args[1];
-        int arg2 = (int)args[2];
-
-        //we need to write data in this method, and read it in the Deserialize method in the SAME ORDER.
-        //if we do not, the data can't be read properly.
-        //eg if we had multiple properties to seralize
-        //WriteBool()
-        //WriteString()
-        //WriteInt()
-
-        //then in deserialize
-        //ReadBool()
-        //ReadString()
-        //ReadInt()
-        data = data.Append(SerializerUtils.WriteBool(arg0));
-        data = data.Append(SerializerUtils.WriteInt(arg1));
-        data = data.Append(SerializerUtils.WriteInt(arg2));
-        return data;
-    }
-
-    public void DConnectResponse(ulong sender, int msgCode, byte[] data) {
-        bool arg0 = SerializerUtils.ReadBool(ref data);
-        int arg1 = SerializerUtils.ReadInt(ref data);
-        int arg2 = SerializerUtils.ReadInt(ref data);
-        NetworkManager.instance.Process(sender, msgCode, arg0, arg1, arg2);
-    }
-
-    public void OnRecConnectRequestResponse(ulong sender, params object[] args) {
-        Debug.Log("OnConnectionRequestResponse: sender: " + sender + ": accept:" + args[0] + " host cId: " + args[1] + " me cId: " + args[2]);
-        RegisterConnection(sender, (int)args[1]);
-        me.connectionIndex = (int)args[2];
-        connectionCounter = me.connectionIndex;
-    }
-
-    //test int S/D/P methods
-    public byte[] STestInt(int msgCode, params object[] args) {
-        byte[] data = new byte[0];
-        int arg0 = (int)args[0];
-        data = data.Append(SerializerUtils.WriteInt(arg0));
-        return data;
-    }
-
-    public void DTestInt(ulong sender, int msgCode, byte[] data) {
-        int arg0 = SerializerUtils.ReadInt(ref data);
-        Process(sender, msgCode, arg0);
-    }
-
-    public void OnRecTestInt(ulong sender, params object[] args) {
-        Debug.Log("OnRecTestInt: sender: " + sender + " int: " + args[0]);
-    }
-    // ----- 
-
-    public void OnRecKeepAlive(ulong sender, params object[] args) {
-        connections[sender].timeSinceLastMsg = 0f;
-    }
-
-    //--
-    public void OnRecPing(ulong sender, params object[] args) {
-        SendMessage(sender, "Pong");
-        connections[sender].openPings.Add(Time.realtimeSinceStartup);
-    }
-
-
-    public void OnRecPong(ulong sender, params object[] args) {
-        //calculate ping
-        float pingSendTime = connections[sender].openPings[0];
-        float pingRecTime = Time.realtimeSinceStartup;
-        connections[sender].ping = (int)((pingRecTime - pingSendTime)*1000f / 2f);
-        //Debug.Log(string.Format("{0} - {1} - {2}", pingSendTime, pingRecTime, (int)((pingRecTime - pingSendTime)*1000f / 2f)));
-        connections[sender].openPings.RemoveAt(0);
-        SendMessage(sender, "Pung");
-    }
-
-    public void OnRecPung(ulong sender, params object[] args) {
-        float pingSendTime = connections[sender].openPings[0];
-        float pingRecTime = Time.realtimeSinceStartup;
-        connections[sender].ping = (int)((pingRecTime - pingSendTime) * 1000f / 2f);
-        //Debug.Log(string.Format("{0} - {1} - {2}", pingSendTime, pingRecTime, (int)((pingRecTime - pingSendTime)*1000f / 2f)));
-        connections[sender].openPings.RemoveAt(0);
-    }
     //queue message to go out in the next packet (will be priority filtering eventually)
     //this is sent every 200ms, or once the queue reacheds MTU, or can be forced when you send a reliable message
     public void QueueMessage(ulong sendTo, string msgCode, params object[] args) {
@@ -188,19 +82,6 @@ public class NetworkManager:SerializedMonoBehaviour {
         byte[] data = PackMessage(msgCode, args);
         SendP2PData(sendTo, data, data.Length, Networking.SendType.ReliableWithBuffering);        
         //SendP2PData(sendTo, data, data.Length);
-    }
-
-    /// <summary>
-    /// Combines msgCode and serialized message data (from args) into a byte[]
-    /// </summary>
-    public byte[] PackMessage(int msgCode, params object[] args) {
-        if(msgCode > 255 || msgCode < 0) throw new Exception(string.Format("msgCode [{0}] is outside the accepted range of [0-255]", msgCode));
-        byte[] data = new byte[1] { ((byte)msgCode) };
-        if(SerializeActions[msgCode] != null) { //if we just want to send an "empty" message there is no serializer/deserializer
-            byte[] msgData = Serialize(msgCode, args);
-            data = data.Append(msgData);
-        }
-        return data;
     }
 
     /// <summary>
@@ -217,6 +98,19 @@ public class NetworkManager:SerializedMonoBehaviour {
     public void SendMessage(ulong sendTo, string msgCode, params object[] args) {
         int iMsgCode = GetMessageCode(msgCode);
         SendMessage(sendTo, iMsgCode, args);
+    }
+
+    /// <summary>
+    /// Combines msgCode and serialized message data (from args) into a byte[]
+    /// </summary>
+    public byte[] PackMessage(int msgCode, params object[] args) {
+        if(msgCode > 255 || msgCode < 0) throw new Exception(string.Format("msgCode [{0}] is outside the accepted range of [0-255]", msgCode));
+        byte[] data = new byte[1] { ((byte)msgCode) };
+        if(SerializeActions[msgCode] != null) { //if we just want to send an "empty" message there is no serializer/deserializer
+            byte[] msgData = Serialize(msgCode, args);
+            data = data.Append(msgData);
+        }
+        return data;
     }
 
     //wrapper
@@ -248,14 +142,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         }
     }
 
-    public int GetMessageCode(string messageName) {
-        if(MessageCodes.Contains(messageName)) {
-            return MessageCodes.IndexOf(messageName);
-        }
-        throw new Exception("Message with name [" + messageName + "] does not exist");
-        return -1;
-    }
-
+    //connection stuff below
     public void RegisterMyConnection(ulong steamID) {
         SteamConnection c = new SteamConnection();
         c.steamID = steamID;
@@ -311,15 +198,29 @@ public class NetworkManager:SerializedMonoBehaviour {
     //Update just handles checking the session state of all current connections, and if anyone has timed out/disconnected
     //remove them from the connection list and do a bit of cleaup
     public void FixedUpdate() {
-        _updateTimer -= Time.deltaTime;
-        if(_updateTimer <= 0f) {
-            _updateTimer = updateTimer;
+     
+        _networkSimulationTimer -= Time.fixedDeltaTime;
+        foreach(var kvp in connections) {
+            kvp.Value.timeSinceLastMsg += Time.fixedDeltaTime;
+        }
+        //network loop
+        if(_networkSimulationTimer <= 0f) {
+            _networkSimulationTimer = networkSimulationTimer;
             List<ulong> disconnects = new List<ulong>();
-            foreach(var c in connections) {
-                Facepunch.Steamworks.Client.Instance.Networking.GetSessionState(c.Value.steamID, out c.Value.connectionState);
 
-                if(c.Value.connectionState.ConnectionActive == 0 && c.Value.connectionState.Connecting == 0) {
-                    disconnects.Add(c.Value.steamID);
+            foreach(var kvp in connections) {
+                SteamConnection c = kvp.Value;
+
+                if(me.HasAuthOver(c)) {//only send keepalives if you're the responsible one in this relationship
+                    if(c.timeSinceLastMsg >= keepAliveTimer) { //15 seconds?
+                        c.Ping();
+                    }
+                }
+
+                Facepunch.Steamworks.Client.Instance.Networking.GetSessionState(c.steamID, out c.connectionState);
+
+                if(c.connectionState.ConnectionActive == 0 && c.connectionState.Connecting == 0) {
+                    disconnects.Add(c.steamID);
                 }
             }
 
@@ -327,36 +228,8 @@ public class NetworkManager:SerializedMonoBehaviour {
                 Disconnect(disconnects[i]);
             }
         }
-
-        _networkSimulationTimer -= Time.fixedDeltaTime;
-        foreach(var kvp in connections) {
-            kvp.Value.timeSinceLastMsg += Time.fixedDeltaTime;
-        }
-
-        if(_networkSimulationTimer <= 0f) {
-            _networkSimulationTimer = networkSimulationTimer;
-            //SendMessages();
-
-            foreach(var kvp in connections) {
-                SteamConnection c = kvp.Value;
-                if(me.HasAuthOver(c)) {//only send keepalives if you're the responsible one in this relationship
-                    if(c.timeSinceLastMsg >= keepAliveTimer) { //15 seconds?
-                        c.Ping();
-                    }
-                }
-            }
-            //we need a message queue per connection
-            //and we need to know when was the last time we received anything from the connection
-            //if we're the high
-            //figure out if we need to send a keep alive packet
-            //when was the last time we
-        }
     }
 
-    public void Simulate() {
-        //loop through our message queue and try to pack everything into a packet and send it off
-        //we should also simulate entities/state data here to auto-replicate to everyone? idk
-    }
 
     //cleanup method.  Closes all sessions when we close the game, this makes it so 
     //other players don't have to wait for a timeout to be detected before removing you when you leave (in most cases)
@@ -371,4 +244,6 @@ public class NetworkManager:SerializedMonoBehaviour {
         CloseConnectionsOnDestroy();
         NetworkManager.instance = null;
     }
+
+    
 }
