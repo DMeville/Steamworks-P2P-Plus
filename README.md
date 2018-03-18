@@ -6,6 +6,7 @@ I wanted something slightly higher level than using the SendP2PPacket method in 
 
 
 Project uses:
-Facepunch.Steamworks for as a steamworks wrapper, included and required. (https://github.com/Facepunch/Facepunch.Steamworks)
 
-Odin Inspector, to show dictionaries in the ditor, not included but not required.(https://assetstore.unity.com/packages/tools/utilities/odin-inspector-and-serializer-89041) to show dictionaries in the editor, but it's not required.
+Facepunch.Steamworks for as a steamworks wrapper, included and required. 
+(https://github.com/Facepunch/Facepunch.Steamworks)
+Odin Inspector, to show dictionaries in the ditor, not included but not required.(https://assetstore.unity.com/packages/tools/utilities/odin-inspector-and-serializer-89041) 
