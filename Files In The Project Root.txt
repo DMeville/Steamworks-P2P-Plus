@@ -1,0 +1,5 @@
+Steamworks needs to be able to find steam_api.dll to be able to load, so when running the editor we put them in the root folder.
+
+When you release your game they should be next to the exe, here's where: https://garry.tv/2018/01/31/steamworks-libraries/
+
+It's dumb.
