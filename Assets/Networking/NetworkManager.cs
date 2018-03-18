@@ -165,17 +165,18 @@ public class NetworkManager:SerializedMonoBehaviour {
         //Debug.Log(string.Format("{0} - {1} - {2}", pingSendTime, pingRecTime, (int)((pingRecTime - pingSendTime)*1000f / 2f)));
         connections[sender].openPings.RemoveAt(0);
     }
-    //queue message to go out in the next packet (will be priority filtering eventually.
+    //queue message to go out in the next packet (will be priority filtering eventually)
+    //this is sent every 200ms, or once the queue reacheds MTU, or can be forced when you send a reliable message
     public void QueueMessage(ulong sendTo, string msgCode, params object[] args) {
         int iMsgCode = GetMessageCode(msgCode);
         QueueMessage(sendTo, iMsgCode, args);
     }
 
     public void QueueMessage(ulong sendTo, int msgCode, params object[] args) {
-        //just send it right NOW
         Debug.Log("[SEND] " + MessageCodes[msgCode]);
         byte[] data = PackMessage(msgCode, args);
-        SendP2PData(sendTo, data, data.Length);
+        SendP2PData(sendTo, data, data.Length, Networking.SendType.ReliableWithBuffering);        
+        //SendP2PData(sendTo, data, data.Length);
     }
 
     /// <summary>
@@ -193,10 +194,13 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     /// <summary>
     /// shouldn't use this except for messages we want to send immediately (like connection requests/accepts or keep alives)
-    /// Use QueueMessage instead.  It sends (by default) 20 packets per second.
+    /// Or when we want to force sending any buffered messages
+    /// use QueueMessage instead
     /// </summary>
     public void SendMessage(ulong sendTo, int msgCode, params object[] args) {
-        //TODO.  Right now QueueMessage just sends the message immediately anyways.
+        Debug.Log("[SEND]  " + MessageCodes[msgCode]);
+        byte[] data = PackMessage(msgCode, args);
+        SendP2PData(sendTo, data, data.Length, Networking.SendType.Reliable);
     }
 
     public void SendMessage(ulong sendTo, string msgCode, params object[] args) {
@@ -214,8 +218,11 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     //callback from SteamClient. Read the data and decide how to process it.
     public void ReceiveP2PData(ulong steamID, byte[] bytes, int length, int channel) {
-        //first byte is the message code, the rest is the data for that message
-        //messages are not combined, one message per packet (for now)
+        //[00000000][0000....0000] ...
+        //byte[0] => number of messages packed into this packet
+        //byte[0] => message code
+        //byte[1->n] => data for the message
+
         byte[] msgCodeBytes = bytes.Take(1).ToArray();
 
         int msgCode = msgCodeBytes[0];
@@ -325,7 +332,7 @@ public class NetworkManager:SerializedMonoBehaviour {
                     if(c.timeSinceLastMsg >= keepAliveTimer) { //15 seconds?
                         //NetworkManager.instance.QueueMessage(c.steamID, "Ping");
                         //c.openPings.Add(Time.realtimeSinceStartup);
-                        NetworkManager.instance.QueueMessage(c.steamID, "KeepAlive");
+                        NetworkManager.instance.SendMessage(c.steamID, "KeepAlive");
                     }
                 }
             }
