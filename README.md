@@ -18,11 +18,11 @@ private void byte[] SerializePlayerData(int msgCode, params object[] args){
     
     //we need to know what data we want to send with this message type
     string playerName = arg[0];
-    int playerId = arg[1];
-    int hp = arg[2];
-    int str = arg[3];
+    int playerId =      arg[1];
+    int hp =            arg[2];
+    int str =           arg[3];
     float magicNumber = arg[4];
-    bool isCool = arg[5];
+    bool isCool =       arg[5];
     
     //Note: We must write these in the serialize method and read these in the deserialize method in the SAME order
     data = data.Append(SerializerUtils.WriteString(playerName));
@@ -37,22 +37,22 @@ private void byte[] SerializePlayerData(int msgCode, params object[] args){
 
 private void DeserializePlayerData(ulong sender, int msgCode, byte[] data){
     string playerName = SerializerUtils.ReadString(ref data);
-    int playerId = SerializerUtils.ReadInt(ref data);
-    int hp = SerializerUtils.ReadInt(ref data);
-    int str = SerializerUtils.ReadInt(ref data);
+    int playerId =      SerializerUtils.ReadInt(ref data);
+    int hp =            SerializerUtils.ReadInt(ref data);
+    int str =           SerializerUtils.ReadInt(ref data);
     float magicNumber = SerializerUtils.ReadFloat(ref data);
-    bool isCool = SerializerUtils.ReadBool(ref data);
+    bool isCool =       SerializerUtils.ReadBool(ref data);
     
     NetworkManager.instance.Process(sender, msgCode, playerName, playerId, hp, str, magicNumber, isCool)
 }
 
 private void OnRecPlayerData(ulong sender, int msgCode, params object[] args){
     string playerName = arg[0];
-    int playerId = arg[1];
-    int hp = arg[2];
-    int str = arg[3];
+    int playerId =      arg[1];
+    int hp =            arg[2];
+    int str =           arg[3];
     float magicNumber = arg[4];
-    bool isCool = arg[5];
+    bool isCool =       arg[5];
     
     //do whatever you want with this data now
     //Players.GetPlayer(playerId).SetStats(hp, str, magicNumber, isCool);
