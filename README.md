@@ -20,7 +20,7 @@ private void byte[] SerializePlayerData(int msgCode, params object[] args){
     int hp =            arg[2];
     int str =           arg[3];
     bool isCool =       arg[4];
-    float magicNum =    arg[5];
+    float magicNumber = arg[5];
     
     OutputStream stream = new OutputStream(); //Using OutputStream = BitwiseMemoryOutputStream;
     
