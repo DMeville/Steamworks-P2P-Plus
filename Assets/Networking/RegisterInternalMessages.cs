@@ -26,7 +26,7 @@ public class RegisterInternalMessages  {
     //arg[1] is an int telling us what connectionIndex the host is assigned assigned.
     //arg[2] is an int telling us what connectionIndex the host assigned us.
     private static byte[] SConnectResponse(int msgCode, params object[] args) {
-        byte[] data = new byte[0];        
+        //byte[] data = new byte[0];        
 
         //we need to know what data were are sending with each msg, but to keep it modular we need to cast to types here
         bool arg0 = (bool)args[0];
@@ -53,8 +53,7 @@ public class RegisterInternalMessages  {
         d.WriteInt(arg1, 0, 255); //values will be in the range of [0, 255] as they are player indicies, and shouldn't get that high up anyways so we can save some bits
         d.WriteInt(arg2, 0, 255);
 
-        data = d.GetBuffer();
-        return data;
+        return d.GetBuffer();
     }
 
     private static void DConnectResponse(ulong sender, int msgCode, byte[] data) {
