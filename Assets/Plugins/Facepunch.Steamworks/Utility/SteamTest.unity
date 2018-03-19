@@ -354,6 +354,7 @@ GameObject:
   - component: {fileID: 862127747}
   - component: {fileID: 862127746}
   - component: {fileID: 862127748}
+  - component: {fileID: 862127749}
   m_Layer: 0
   m_Name: SteamClient
   m_TagString: Untagged
@@ -465,7 +466,6 @@ MonoBehaviour:
     - Name: 
       Entry: 8
       Data: 
-  updateTimer: 5
   networkSimulationRate: 20
   keepAliveTimer: 15
   me:
@@ -475,7 +475,19 @@ MonoBehaviour:
     openPings: []
     connectionEstablishedTime: 0
     timeSinceLastMsg: 0
+  connectionCounter: 0
   MessageCodes: []
+--- !u!114 &862127749
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 862127745}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3776257350ef3db4ab1ff887dcf271d7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &962110708
 GameObject:
   m_ObjectHideFlags: 0
@@ -709,7 +721,6 @@ GameObject:
   - component: {fileID: 1786647442}
   - component: {fileID: 1786647441}
   - component: {fileID: 1786647440}
-  - component: {fileID: 1786647444}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -780,14 +791,3 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1786647444
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_PrefabParentObject: {fileID: 0}
-  m_PrefabInternal: {fileID: 0}
-  m_GameObject: {fileID: 1786647439}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3776257350ef3db4ab1ff887dcf271d7, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 

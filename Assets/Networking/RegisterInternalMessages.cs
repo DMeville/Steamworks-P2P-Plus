@@ -1,6 +1,8 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using OutputStream = BitwiseMemoryOutputStream;
+using InputStream = BitwiseMemoryInputStream;
 
 public class RegisterInternalMessages  {
 
@@ -24,7 +26,7 @@ public class RegisterInternalMessages  {
     //arg[1] is an int telling us what connectionIndex the host is assigned assigned.
     //arg[2] is an int telling us what connectionIndex the host assigned us.
     private static byte[] SConnectResponse(int msgCode, params object[] args) {
-        byte[] data = new byte[0];
+        byte[] data = new byte[0];        
 
         //we need to know what data were are sending with each msg, but to keep it modular we need to cast to types here
         bool arg0 = (bool)args[0];
@@ -34,24 +36,34 @@ public class RegisterInternalMessages  {
         //we need to write data in this method, and read it in the Deserialize method in the SAME ORDER.
         //if we do not, the data can't be read properly.
         //eg if we had multiple properties to seralize
-        //WriteBool()
-        //WriteString()
-        //WriteInt()
+        //WriteBool()    first
+        //WriteString()  second
+        //WriteInt()     third
 
         //then in deserialize
-        //ReadBool()
-        //ReadString()
-        //ReadInt()
-        data = data.Append(SerializerUtils.WriteBool(arg0));
-        data = data.Append(SerializerUtils.WriteInt(arg1));
-        data = data.Append(SerializerUtils.WriteInt(arg2));
+        //ReadBool()     first
+        //ReadString()   second
+        //ReadInt()      third
+
+        //we also need to make sure we read/write with the same range (if any). 
+        //If we write a [0,255] int we need to read it as a [0,255] too.  This saves space
+
+        OutputStream d = new OutputStream();
+        d.WriteBool(arg0);
+        d.WriteInt(arg1, 0, 255); //values will be in the range of [0, 255] as they are player indicies, and shouldn't get that high up anyways so we can save some bits
+        d.WriteInt(arg2, 0, 255);
+
+        data = d.GetBuffer();
         return data;
     }
 
     private static void DConnectResponse(ulong sender, int msgCode, byte[] data) {
-        bool arg0 = SerializerUtils.ReadBool(ref data);
-        int arg1 = SerializerUtils.ReadInt(ref data);
-        int arg2 = SerializerUtils.ReadInt(ref data);
+        InputStream d = new InputStream(data);
+
+        bool arg0 = d.ReadBool();
+        int arg1 = d.ReadInt(0, 255);
+        int arg2 = d.ReadInt(0, 255);
+
         NetworkManager.instance.Process(sender, msgCode, arg0, arg1, arg2);
     }
 
@@ -61,12 +73,16 @@ public class RegisterInternalMessages  {
     private static byte[] STestInt(int msgCode, params object[] args) {
         byte[] data = new byte[0];
         int arg0 = (int)args[0];
-        data = data.Append(SerializerUtils.WriteInt(arg0));
-        return data;
+        OutputStream d = new OutputStream();
+        d.WriteInt(arg0); //write it in the default range because this is just a test. sent as 32bit
+
+        return d.GetBuffer() ;
     }
 
     private static void DTestInt(ulong sender, int msgCode, byte[] data) {
-        int arg0 = SerializerUtils.ReadInt(ref data);
+        InputStream d = new InputStream(data);
+
+        int arg0 = d.ReadInt();
         NetworkManager.instance.Process(sender, msgCode, arg0);
     }
 
