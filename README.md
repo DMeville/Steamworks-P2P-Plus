@@ -20,6 +20,7 @@ private void byte[] SerializePlayerData(int msgCode, params object[] args){
     int hp =            arg[2];
     int str =           arg[3];
     bool isCool =       arg[4];
+    float magicNum =    arg[5];
     
     OutputStream stream = new OutputStream(); //Using OutputStream = BitwiseMemoryOutputStream;
     
@@ -31,6 +32,7 @@ private void byte[] SerializePlayerData(int msgCode, params object[] args){
     stream.WriteInt(hp);               //sends as a full 32 bit int
     stream.WriteInt(str);
     stream.WriteBool(isCool);          //sends one bit, instead of 8
+    stream.WriteFloat(magicNumber, 0f, 1f, 0.1f) //min, max, precision.  would send in 4 bits instead of 32
     
     return stream.GetBuffer();
 }
@@ -42,8 +44,9 @@ private void DeserializePlayerData(ulong sender, int msgCode, byte[] data){
     int hp             = stream.ReadInt();
     int str            = stream.ReadInt();
     bool isCool        = stream.ReadBool();
+    float magicNumber  = stream.ReadFloat(0f, 1f, 0.1f);
     
-    NetworkManager.instance.Process(sender, msgCode, playerName, playerId, hp, str, isCool)
+    NetworkManager.instance.Process(sender, msgCode, playerName, playerId, hp, str, isCool, magicNumber);
 }
 
 private void OnRecPlayerData(ulong sender, int msgCode, params object[] args){
@@ -52,9 +55,10 @@ private void OnRecPlayerData(ulong sender, int msgCode, params object[] args){
     int hp            = arg[2];
     int str           = arg[3];
     bool isCool       = arg[4];
+    float magicNumber = arg[5];
     
     //do whatever you want with this data now
-    //Players.GetPlayer(playerId).SetStats(hp, str, isCool);
+    //Players.GetPlayer(playerId).SetStats(hp, str, isCool, magicNumber);
     //Players.GetPlayer(playerId).SetName(playerName);
 }
 ```
