@@ -77,6 +77,7 @@ Facepunch.Steamworks for as a steamworks wrapper, included and required.
 (https://github.com/Facepunch/Facepunch.Steamworks)
 
 Unity-UdpSoket-Bitstream-Utilitis BitStream classes to pack data better, included and required.
-https://github.com/M-Aghasi/Unity-UdpSocket-BitStream-Utilities
+
+(https://github.com/M-Aghasi/Unity-UdpSocket-BitStream-Utilities)
 
 Odin Inspector, to show dictionaries in the ditor, not included but not required.(https://assetstore.unity.com/packages/tools/utilities/odin-inspector-and-serializer-89041) 
