@@ -48,9 +48,9 @@ public class SteamClient:MonoBehaviour {
 
         Debug.Log("Steam Initialized: " + client.Username + " / " + client.SteamId);
 
-        NetworkManager.instance.RegisterMyConnection(client.SteamId);
+        Core.net.RegisterMyConnection(client.SteamId);
 
-        Debug.Log("Registering Callbacks");
+        //Debug.Log("Registering Callbacks");
         client.Networking.SetListenChannel(0, true);
         client.Networking.OnP2PData = OnP2PData;
         client.Networking.OnIncomingConnection = OnIncommingConnection;
@@ -70,16 +70,16 @@ public class SteamClient:MonoBehaviour {
     }
 
     public void OnP2PData(ulong steamID, byte[] bytes, int length, int channel) {
-        NetworkManager.instance.ReceiveP2PData(steamID, bytes, length, channel);
+        Core.net.ReceiveP2PData(steamID, bytes, length, channel);
     }
 
     public bool OnIncommingConnection(ulong steamID) {
         //are they in the same lobby as us
-        return true;// NetworkManager.instance.ConnectRequestResponse(steamID);
+        return true;// Core.net.ConnectRequestResponse(steamID);
     }
 
     public void OnConnectionFailed(ulong steamID, Networking.SessionError error) {
-        NetworkManager.instance.ConnectionFailed(steamID, error);
+        Core.net.ConnectionFailed(steamID, error);
     }
 
     public void OnGUI() {
@@ -90,11 +90,11 @@ public class SteamClient:MonoBehaviour {
             //int a = 255;
             //byte b = (byte)a;
             //Debug.Log(b.ToStringBinary());
-            NetworkManager.instance.QueueMessage(76561198030288857, 0); //same as passing in "ConnectRequest"
+            Core.net.QueueMessage(76561198030288857, 0); //same as passing in "ConnectRequest"
         }
 
         List<ulong> connectionsToClose = new List<ulong>();
-        foreach(KeyValuePair<ulong, SteamConnection> k in NetworkManager.instance.connections) {
+        foreach(KeyValuePair<ulong, SteamConnection> k in Core.net.connections) {
 
             ulong steamid = k.Value.steamID;
             GUILayout.Label("Connection: " + steamid + " / " + client.Friends.GetName(steamid));
@@ -117,7 +117,7 @@ public class SteamClient:MonoBehaviour {
                 try {
                     UnityEngine.Profiling.Profiler.BeginSample("Send P2P");
 
-                    NetworkManager.instance.QueueMessage(steamid, 2, UnityEngine.Random.Range(0, 40));
+                    Core.net.QueueMessage(steamid, 2, UnityEngine.Random.Range(0, 40));
                     //might need a way to ensure messageType and the parameters match.
                     //pass in paramters with the register so we can check against the args list?
                     //idk
@@ -146,7 +146,7 @@ public class SteamClient:MonoBehaviour {
         }
 
         for(int i = 0; i < connectionsToClose.Count; i++) {
-            NetworkManager.instance.RemoveConnection(connectionsToClose[i]);
+            Core.net.RemoveConnection(connectionsToClose[i]);
         }
     }
 
@@ -157,8 +157,8 @@ public class SteamClient:MonoBehaviour {
             //should we try to close any open connections?
             //client.Networking.CloseSession()
             //any clients should time out when closed...once we have keep-alive packets up and running
-            if(NetworkManager.instance != null) {
-                NetworkManager.instance.CloseConnectionsOnDestroy();
+            if(Core.net != null) {
+                Core.net.CloseConnectionsOnDestroy();
             }
 
             client.Dispose();

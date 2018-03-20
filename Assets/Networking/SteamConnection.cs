@@ -28,7 +28,7 @@ public class SteamConnection {
     //starts the ping->pong->pung sequence so we can calculate ping
     //on both sides between this connection and me
     public void Ping() {
-        NetworkManager.instance.SendMessage(steamID, "Ping");
+        Core.net.SendMessage(steamID, "Ping");
         openPings.Add(Time.realtimeSinceStartup);
     }
 }

@@ -11,13 +11,13 @@ public class RegisterInternalMessages  {
 
     //all internal message stuff goes in this class.
     public static void Register() {
-        NetworkManager.instance.RegisterMessageType("ConnectRequest", null, null, OnRecConnectRequest);
-        NetworkManager.instance.RegisterMessageType("ConnectResponse", SConnectResponse, DConnectResponse, OnRecConnectRequestResponse);
-        NetworkManager.instance.RegisterMessageType("KeepAlive", null, null, OnRecKeepAlive);
-        NetworkManager.instance.RegisterMessageType("TestInt", STestInt, DTestInt, OnRecTestInt);
-        NetworkManager.instance.RegisterMessageType("Ping", null, null, OnRecPing);
-        NetworkManager.instance.RegisterMessageType("Pong", null, null, OnRecPong);
-        NetworkManager.instance.RegisterMessageType("Pung", null, null, OnRecPung); //lulwut. Ping -> Pong -> Pung so we can get the ping on both sides we need two timestamps on each side. There must be a better way
+        Core.net.RegisterMessageType("ConnectRequest", null, null, OnRecConnectRequest);
+        Core.net.RegisterMessageType("ConnectResponse", SConnectResponse, DConnectResponse, OnRecConnectRequestResponse);
+        Core.net.RegisterMessageType("KeepAlive", null, null, OnRecKeepAlive);
+        Core.net.RegisterMessageType("TestInt", STestInt, DTestInt, OnRecTestInt);
+        Core.net.RegisterMessageType("Ping", null, null, OnRecPing);
+        Core.net.RegisterMessageType("Pong", null, null, OnRecPong);
+        Core.net.RegisterMessageType("Pung", null, null, OnRecPung); //lulwut. Ping -> Pong -> Pung so we can get the ping on both sides we need two timestamps on each side. There must be a better way
     }
 
     //ConnectionResponse Serailize/Deserialize/Process methods
@@ -63,7 +63,7 @@ public class RegisterInternalMessages  {
         int arg1 = d.ReadInt(0, 255);
         int arg2 = d.ReadInt(0, 255);
 
-        NetworkManager.instance.Process(sender, msgCode, arg0, arg1, arg2);
+        Core.net.Process(sender, msgCode, arg0, arg1, arg2);
     }
 
    
@@ -82,7 +82,7 @@ public class RegisterInternalMessages  {
         InputStream d = new InputStream(data);
 
         int arg0 = d.ReadInt();
-        NetworkManager.instance.Process(sender, msgCode, arg0);
+        Core.net.Process(sender, msgCode, arg0);
     }
 
     private static void OnRecTestInt(ulong sender, params object[] args) {
@@ -91,39 +91,39 @@ public class RegisterInternalMessages  {
     // ----- 
 
     private static void OnRecKeepAlive(ulong sender, params object[] args) {
-        if(NetworkManager.instance.connections.ContainsKey(sender)) {
-            NetworkManager.instance.connections[sender].timeSinceLastMsg = 0f;
+        if(Core.net.connections.ContainsKey(sender)) {
+            Core.net.connections[sender].timeSinceLastMsg = 0f;
         }
     }
 
     //--
     private static void OnRecPing(ulong sender, params object[] args) {
-        NetworkManager.instance.SendMessage(sender, "Pong");
-        if(NetworkManager.instance.connections.ContainsKey(sender)) {
-            NetworkManager.instance.connections[sender].openPings.Add(Time.realtimeSinceStartup);
+        Core.net.SendMessage(sender, "Pong");
+        if(Core.net.connections.ContainsKey(sender)) {
+            Core.net.connections[sender].openPings.Add(Time.realtimeSinceStartup);
         }
     }
 
 
     private static void OnRecPong(ulong sender, params object[] args) {
         //calculate ping
-        if(NetworkManager.instance.connections.ContainsKey(sender)) {
-            float pingSendTime = NetworkManager.instance.connections[sender].openPings[0];
+        if(Core.net.connections.ContainsKey(sender)) {
+            float pingSendTime = Core.net.connections[sender].openPings[0];
             float pingRecTime = Time.realtimeSinceStartup;
-            NetworkManager.instance.connections[sender].ping = (int)((pingRecTime - pingSendTime) * 1000f / 2f);
+            Core.net.connections[sender].ping = (int)((pingRecTime - pingSendTime) * 1000f / 2f);
             //Debug.Log(string.Format("{0} - {1} - {2}", pingSendTime, pingRecTime, (int)((pingRecTime - pingSendTime)*1000f / 2f)));
-            NetworkManager.instance.connections[sender].openPings.RemoveAt(0);
-            NetworkManager.instance.SendMessage(sender, "Pung");
+            Core.net.connections[sender].openPings.RemoveAt(0);
+            Core.net.SendMessage(sender, "Pung");
         }
     }
 
     private static void OnRecPung(ulong sender, params object[] args) {
-        if(NetworkManager.instance.connections.ContainsKey(sender)) {
-            float pingSendTime = NetworkManager.instance.connections[sender].openPings[0];
+        if(Core.net.connections.ContainsKey(sender)) {
+            float pingSendTime = Core.net.connections[sender].openPings[0];
             float pingRecTime = Time.realtimeSinceStartup;
-            NetworkManager.instance.connections[sender].ping = (int)((pingRecTime - pingSendTime) * 1000f / 2f);
+            Core.net.connections[sender].ping = (int)((pingRecTime - pingSendTime) * 1000f / 2f);
             //Debug.Log(string.Format("{0} - {1} - {2}", pingSendTime, pingRecTime, (int)((pingRecTime - pingSendTime)*1000f / 2f)));
-            NetworkManager.instance.connections[sender].openPings.RemoveAt(0);
+            Core.net.connections[sender].openPings.RemoveAt(0);
         }
     }
 
@@ -132,17 +132,17 @@ public class RegisterInternalMessages  {
         //no args
         Debug.Log("OnRecConnectionRequest sender: " + sender);
         //add the senders ID to our connections list
-        NetworkManager.instance.connectionCounter++;
-        NetworkManager.instance.RegisterConnection(sender, NetworkManager.instance.connectionCounter);
+        Core.net.connectionCounter++;
+        Core.net.RegisterConnection(sender, Core.net.connectionCounter);
 
-        NetworkManager.instance.QueueMessage(sender, "ConnectResponse", true, NetworkManager.instance.me.connectionIndex, NetworkManager.instance.connectionCounter);
+        Core.net.QueueMessage(sender, "ConnectResponse", true, Core.net.me.connectionIndex, Core.net.connectionCounter);
         //send back a packet to the sender if we want to accept the connection, otherwise just ignore it.
     }
 
     private static void OnRecConnectRequestResponse(ulong sender, params object[] args) {
         Debug.Log("OnConnectionRequestResponse: sender: " + sender + ": accept:" + args[0] + " host cId: " + args[1] + " me cId: " + args[2]);
-        NetworkManager.instance.RegisterConnection(sender, (int)args[1]);
-        NetworkManager.instance.me.connectionIndex = (int)args[2];
-        NetworkManager.instance.connectionCounter = NetworkManager.instance.me.connectionIndex;
+        Core.net.RegisterConnection(sender, (int)args[1]);
+        Core.net.me.connectionIndex = (int)args[2];
+        Core.net.connectionCounter = Core.net.me.connectionIndex;
     }
 }

@@ -13,20 +13,17 @@ public class Test : MonoBehaviour {
 
         return;
         OutputStream stream = new OutputStream();
-        //int num = -10;
-        //Debug.Log("n: " + num);
-        //stream.WriteInt(num, int.MinValue, int.MaxValue);
-        float num = -23.34234f;
-        stream.WriteFloat(num, -100f, 100f, 0.001f);
+        string s = "Hello World! ";
+        stream.WriteString(s);
       
         byte[] data = stream.GetBuffer();
         Debug.Log(data.ToStringBinary());
 
         InputStream iStream = new InputStream(data);
         //int val = iStream.ReadInt(int.MinValue, int.MaxValue);
-        float val = iStream.ReadFloat(-100f, 100f, 0.001f);
+        string val = iStream.ReadString();
 
-        Debug.Log("Test: " + num + " : " + val.ToString("0.0000000"));
+        Debug.Log("Test: " + s + " : " + val);
 
 
     }

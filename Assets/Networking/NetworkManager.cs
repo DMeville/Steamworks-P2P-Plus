@@ -31,6 +31,7 @@ public class NetworkManager:SerializedMonoBehaviour {
     void Awake() {
         DontDestroyOnLoad(this.gameObject);
         instance = this;
+        Core.net = this;
 
         networkSimulationTimer = (1f / 60f) * (60f / networkSimulationRate);
         //register internal message types
