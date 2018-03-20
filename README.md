@@ -8,7 +8,7 @@ All the good stuff is in NetworkManager.cs
 
 Define your message type and signature somewhere. Ideally all in the same class. These message types are turned into ints and sent over the wire, so it's crucial every connected client has the same message type ordering.
 ```
-NetworkManager.instance.RegisterMessageType("PlayerData", SerializePlayerData, DeserializePlayerdata, OnRecPlayerData);
+Core.net.RegisterMessageType("PlayerData", SerializePlayerData, DeserializePlayerdata, OnRecPlayerData);
 ````
 
 Define the Serialize, Deserialize, and Process methods
@@ -46,7 +46,7 @@ private void DeserializePlayerData(ulong sender, int msgCode, byte[] data){
     bool isCool        = stream.ReadBool();
     float magicNumber  = stream.ReadFloat(0f, 1f, 0.1f);
     
-    NetworkManager.instance.Process(sender, msgCode, playerName, playerId, hp, str, isCool, magicNumber);
+    Core.net.Process(sender, msgCode, playerName, playerId, hp, str, isCool, magicNumber);
 }
 
 private void OnRecPlayerData(ulong sender, int msgCode, params object[] args){
@@ -71,8 +71,8 @@ int hp = 120;
 int str = 9001;
 bool isCool = false;
 
-NetworkManager.instance.QueueMessage(targetSteamId, "PlayerData", playerName, playerId, hp, str, isCool);
-NetworkManager.instance.QueueMessage(targetSteamId, "PlayerData", "Benjals", 4, 11, 0, true);
+Core.net.QueueMessage(targetSteamId, "PlayerData", playerName, playerId, hp, str, isCool);
+Core.net.QueueMessage(targetSteamId, "PlayerData", "Benjals", 4, 11, 0, true);
 ```
 
 ### Dependencies
