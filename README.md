@@ -79,8 +79,6 @@ Project uses:
 
 [Facepunch.Steamworks](https://github.com/Facepunch/Facepunch.Steamworks) for as a steamworks wrapper, included and required. 
 
-
 [Unity-UdpSocket-Bitstream-Utilities BitStream](https://github.com/M-Aghasi/Unity-UdpSocket-BitStream-Utilities) classes to pack data, included and required. 
-
 
 [Odin Inspector](https://assetstore.unity.com/packages/tools/utilities/odin-inspector-and-serializer-89041) to show dictionaries in the editor, not included but not required.
