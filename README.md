@@ -2,7 +2,7 @@
 
 Still super WIP.
 
-I wanted something slightly higher level than using the SendP2PPacket method in steamworks so I made this. Has a modular system to add new message types (along with how to serialize/deserialize each messsage and what to do with it when received) and is connection based.  Messages are bitpacked to save bandwidth.  
+I wanted something slightly higher level than using the SendP2PPacket method in steamworks so I made this. It is connection based, messages are bitpacked to save bandwidth, and has a modular system to add new message types (along with how to serialize/deserialize each messsage and what to do with it when received).
 
 All the good stuff is in NetworkManager.cs, methods called via Core.net or NetworkManager.instance
 
