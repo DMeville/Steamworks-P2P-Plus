@@ -6,7 +6,7 @@ I wanted something slightly higher level than using the SendP2PPacket method in 
 
 All the good stuff is in NetworkManager.cs
 
-Define your message type and signature somewhere. Ideally all in the same class. These message types are turned into ints and sent over the wire, so it's crucial every connected client has the same ordering.
+Define your message type and signature somewhere. Ideally all in the same class. These message types are turned into ints and sent over the wire, so it's crucial every connected client has the same message type ordering.
 ```
 NetworkManager.instance.RegisterMessageType("PlayerData", SerializePlayerData, DeserializePlayerdata, OnRecPlayerData);
 ````
@@ -77,10 +77,10 @@ NetworkManager.instance.QueueMessage(targetSteamId, "PlayerData", "Benjals", 4, 
 
 Project uses:
 
-Facepunch.Steamworks for as a steamworks wrapper, included and required. 
-(https://github.com/Facepunch/Facepunch.Steamworks)
+[Facepunch.Steamworks](https://github.com/Facepunch/Facepunch.Steamworks) for as a steamworks wrapper, included and required. 
 
-UBitstream-Utilities BitStream classes to pack data, included and required. 
-(https://github.com/M-Aghasi/Unity-UdpSocket-BitStream-Utilities)
 
-Odin Inspector, to show dictionaries in the ditor, not included but not required.(https://assetstore.unity.com/packages/tools/utilities/odin-inspector-and-serializer-89041) 
+[Unity-UdpSocket-Bitstream-Utilities BitStream](https://github.com/M-Aghasi/Unity-UdpSocket-BitStream-Utilities) classes to pack data, included and required. 
+
+
+[Odin Inspector](https://assetstore.unity.com/packages/tools/utilities/odin-inspector-and-serializer-89041) to show dictionaries in the editor, not included but not required.
