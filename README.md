@@ -13,7 +13,7 @@ Define your message type and signature somewhere. Ideally all in the same class.
 Core.net.RegisterMessageType("PlayerData", SerializePlayerData, DeserializePlayerdata, OnRecPlayerData);
 ````
 
-Define the Serialize, Deserialize, and Process methods
+Define the Serialize, Deserialize, and Process methods for our new message type "PlayerData"
 ```
 private void byte[] SerializePlayerData(int msgCode, params object[] args){    
     //we need to know what data we want to send with this message type
