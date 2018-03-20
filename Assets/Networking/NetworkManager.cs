@@ -41,6 +41,9 @@ public class NetworkManager:SerializedMonoBehaviour {
     #region Message Definition Helpers
     //Pass in null for serialize and deserialize if you have no data and just want to send a message id (for connect, keep alive, etc)
     public int RegisterMessageType(string messageName, SerializerAction serialize, DeserializerAction deserialize, ProcessDeserializedDataAction process) {
+        if(MessageCodes.Contains(messageName)) {
+            Debug.LogException(new Exception("Can not register message type [" + messageName + "] because a message already exists with that name"));
+        }
         MessageCodes.Add(messageName);
         SerializeActions.Add(serialize);
         DeserializeActions.Add(deserialize);
