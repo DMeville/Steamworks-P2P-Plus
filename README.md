@@ -6,6 +6,8 @@ I wanted something slightly higher level than using the SendP2PPacket method in 
 
 All the good stuff is in NetworkManager.cs, methods called via Core.net or NetworkManager.instance
 
+## Usage
+
 Define your message type and signature somewhere. Ideally all in the same class. These message types are turned into ints and sent over the wire, so it's crucial every connected client has the same message type ordering.
 ```
 Core.net.RegisterMessageType("PlayerData", SerializePlayerData, DeserializePlayerdata, OnRecPlayerData);
