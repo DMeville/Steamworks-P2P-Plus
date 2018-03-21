@@ -24,9 +24,20 @@ public class NetworkManager:SerializedMonoBehaviour {
     public List<DeserializerAction> DeserializeActions = new List<DeserializerAction>();
     public List<ProcessDeserializedDataAction> ProcessDeserializedDataActions = new List<ProcessDeserializedDataAction>();
 
-    public delegate byte[] SerializerAction(int msgType, params object[] args);
+    public delegate byte[] SerializerAction(ulong receiver, int msgType, params object[] args);
     public delegate void DeserializerAction(ulong sender, int msgType, byte[] data);
     public delegate void ProcessDeserializedDataAction(ulong sender, params object[] args);
+
+
+    public int maxPlayers = 255; //connected at once. should be a power of 2 (-1). 2, 4, 8, 16, 32, 64, 128, 256.  etc.  Used for packing data, so leaving this at 255 when you only connect 4 players would be a huge waste.  don't  do that.
+    public int maxPrefabs = 4095; //[0-maxPrefab] range for bitpacking.  The fewer prefabs we have, the better we can pack.  255 fits in 8 bits.  These are prefabs you can spawn over the network.
+    public int maxNetworkIds = 4095; // sent over the net as (connectionNum) (networkId). since every client can spawn prefabs, this will ensure no overlap while not having to sync lists, or go through one player to ensure no overlap. 
+    private int networkIds = 0;
+
+    public Dictionary<string, int> NetworkPrefabsNames = new Dictionary<string, int>(); 
+    public List<GameObject> NetworkPrefabs = new List<GameObject>(); //
+
+    public List<GameObject> registerPrefabs = new List<GameObject>();
 
     void Awake() {
         DontDestroyOnLoad(this.gameObject);
@@ -36,6 +47,89 @@ public class NetworkManager:SerializedMonoBehaviour {
         networkSimulationTimer = (1f / 60f) * (60f / networkSimulationRate);
         //register internal message types
         RegisterInternalMessages.Register(); //to tidy it up, moved all this stuff to a nother class
+        
+        for(int i = 0; i < registerPrefabs.Count; i++) {
+            RegisterPrefab(registerPrefabs[i].name, registerPrefabs[i]);
+        }
+    }
+
+    public int RegisterPrefab(string prefabName, GameObject prefab) {
+        if(NetworkPrefabsNames.ContainsKey(prefabName)) {
+            Debug.LogException(new Exception("Can not register prefab [" + prefabName + "] because a prefab already exists with that name"));
+        }
+
+        NetworkPrefabs.Add(prefab);
+        int prefabId = NetworkPrefabs.Count - 1;
+        NetworkPrefabsNames.Add(prefabName, prefabId); 
+        //Debug.Log("Registered Prefab: " + prefabName + " - id: " + prefabId);
+        return prefabId;
+    }
+
+    public GameObject GetPrefab(int prefabId) {
+        if(NetworkPrefabs.WithinRange(prefabId)) {
+            return NetworkPrefabs[prefabId];
+        } else {
+            Debug.LogError("Prefab id [" + prefabId + "] is outside the range of [0, " + maxPrefabs + "]");
+            return null;
+        }
+    }
+
+    public GameObject GetPrefab(string prefabName) {
+        if(NetworkPrefabsNames.ContainsKey(prefabName)) {
+            return GetPrefab(NetworkPrefabsNames[prefabName]);
+        } else {
+            Debug.LogError("Prefab with name [" + prefabName + "] does not exist in the prefab database");
+            return null;
+        }
+    }
+
+    ///Used internally.  Don't use this.
+    public GameObject SpawnPrefabInternal(int prefabId, int networkId, int owner, int controller) {
+        GameObject prefab = Core.net.GetPrefab(prefabId);
+        GameObject spawned = null;
+        if(prefab != null) {
+            spawned = GameObject.Instantiate(prefab);
+            NetworkGameObject ngo = spawned.GetComponent<NetworkGameObject>();
+            ngo.networkId = networkId;
+            ngo.prefabId = prefabId;
+            ngo.owner = owner;
+            ngo.controller = controller;
+            ngo.OnSpawn();
+        }
+
+        if(spawned != null) {
+            if(me.connectionIndex == owner) {
+                me.entities[networkId] = spawned;
+            } else {
+                SteamConnection c = connections.Values.Where(s => s.connectionIndex == owner).First();
+                c.entities[networkId] = spawned;
+            }
+        }
+        return spawned;
+    }
+
+    /// <summary>
+    /// Spawns a prefab on our client, and replicates it across the network automatically (no data yet, just the object creation)
+    /// </summary>
+    /// <param name="prefabId"></param>
+    /// <returns></returns>
+    public GameObject SpawnPrefab(int prefabId) {
+
+        int networkId = GetNextNetworkId();
+        int owner = me.connectionIndex;
+        int controller = me.connectionIndex;
+
+        GameObject spawned = SpawnPrefabInternal(prefabId, networkId, owner, controller);
+        //this should probably just be picked up by the NetworkSend automatically
+        //because priorities and stuff
+        foreach(SteamConnection sc in connections.Values) {
+            Core.net.QueueMessage(sc.steamID, "SpawnPrefab", prefabId, networkId, owner, controller);
+        }
+        return spawned;
+    }
+
+    private int GetNextNetworkId() {
+        return networkIds++;
     }
 
     #region Message Definition Helpers
@@ -49,7 +143,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         DeserializeActions.Add(deserialize);
         ProcessDeserializedDataActions.Add(process);
         int messageId = MessageCodes.Count - 1;
-        Debug.Log("Registered Message Type: " + messageName + " - id: " + messageId);
+        //Debug.Log("Registered Message Type: " + messageName + " - id: " + messageId);
         return messageId;
     }
 
@@ -57,8 +151,8 @@ public class NetworkManager:SerializedMonoBehaviour {
         NetworkManager.instance.ProcessDeserializedDataActions[msgType](sender, args);
     }
 
-    public byte[] Serialize(int msgId, params object[] args) {
-        return SerializeActions[msgId](msgId, args);
+    public byte[] Serialize(ulong receiver, int msgId, params object[] args) {
+        return SerializeActions[msgId](receiver, msgId, args);
     }
 
     public void Deserialize(ulong sender, int msgId, byte[] data) {
@@ -83,7 +177,7 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     public void QueueMessage(ulong sendTo, int msgCode, params object[] args) {
         Debug.Log("[SEND] " + MessageCodes[msgCode]);
-        byte[] data = PackMessage(msgCode, args);
+        byte[] data = PackMessage(sendTo, msgCode, args);
         SendP2PData(sendTo, data, data.Length, Networking.SendType.ReliableWithBuffering);        
         //SendP2PData(sendTo, data, data.Length);
     }
@@ -95,7 +189,7 @@ public class NetworkManager:SerializedMonoBehaviour {
     /// </summary>
     public void SendMessage(ulong sendTo, int msgCode, params object[] args) {
         Debug.Log("[SEND]  " + MessageCodes[msgCode]);
-        byte[] data = PackMessage(msgCode, args);
+        byte[] data = PackMessage(sendTo, msgCode, args);
         SendP2PData(sendTo, data, data.Length, Networking.SendType.Reliable);
     }
 
@@ -107,11 +201,11 @@ public class NetworkManager:SerializedMonoBehaviour {
     /// <summary>
     /// Combines msgCode and serialized message data (from args) into a byte[]
     /// </summary>
-    public byte[] PackMessage(int msgCode, params object[] args) {
+    public byte[] PackMessage(ulong receiver, int msgCode, params object[] args) {
         if(msgCode > 255 || msgCode < 0) throw new Exception(string.Format("msgCode [{0}] is outside the accepted range of [0-255]", msgCode));
         byte[] data = new byte[1] { ((byte)msgCode) };
         if(SerializeActions[msgCode] != null) { //if we just want to send an "empty" message there is no serializer/deserializer
-            byte[] msgData = Serialize(msgCode, args);
+            byte[] msgData = Serialize(receiver, msgCode, args);
             data = data.Append(msgData);
         }
         return data;
@@ -148,6 +242,7 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     //connection stuff below
     public void RegisterMyConnection(ulong steamID) {
+        Debug.Log("Register my connection");
         SteamConnection c = new SteamConnection();
         c.steamID = steamID;
         c.connectionIndex = 0;
@@ -199,6 +294,13 @@ public class NetworkManager:SerializedMonoBehaviour {
         return true;
     }
 
+    //called on a client when they successful connect to a host
+    //here we can spawn our client player, or set up more data or something
+    public void ConnectedToHost(ulong host) {
+        Debug.Log("ConnectedToHost:: SpawnPrefab");
+        Core.net.SpawnPrefab(0);
+    }
+
     //Update just handles checking the session state of all current connections, and if anyone has timed out/disconnected
     //remove them from the connection list and do a bit of cleaup
     public void FixedUpdate() {
@@ -231,7 +333,21 @@ public class NetworkManager:SerializedMonoBehaviour {
             for(int i = 0; i < disconnects.Count; i++) {
                 Disconnect(disconnects[i]);
             }
+
+            NetworkSend();
         }
+    }
+
+    /// <summary>
+    /// Takes all queued messages since the last send, packs them, and sends them off
+    /// this will send ALL data, in multiple packets if necessary.  
+    /// Also grabs all states and tries to send them based on priority after the normal messages are sent.
+    /// If a state doesn't make it into this packet, the priority counter will be increased so it should send in future
+    /// sends, eventually. 
+    /// </summary>
+    public void NetworkSend() {
+        //each client has a different set of entities that need to be simulated possibly.
+        //
     }
 
 

@@ -82,6 +82,8 @@ public static class SerializerUtils  {
     public static int ReadInt(this InputStream stream, int minValue = int.MinValue, int maxValue = int.MaxValue) {
         int reqBit = (int)RequiredBits(minValue, maxValue);
         return stream.ReadInt(reqBit) + minValue;
+
+        
     }
 
     ///precision is how many digits after decimal. Max is 7 (0.0000001)
@@ -107,29 +109,29 @@ public static class SerializerUtils  {
         value = Mathf.Clamp(value, minValue, maxValue);
 
         int intMax = (int)((maxValue - minValue + precision) * (1f / precision)); //10
-        Debug.Log("intMax: " + intMax);
+        //Debug.Log("intMax: " + intMax);
         //don't round, just remove values past precision
         //if we passed in 0.4524, we should use the value 0.4 (precision 0.1)
         //and that should be int value of 4
         bool neg = (value < 0);
         value = value - minValue;
-        Debug.Log("offset value: " + value);
+        //Debug.Log("offset value: " + value);
         if(!neg) {
             value = Mathf.Floor(value * (1 / precision)) * precision; //converts 0.452 to 0.4.
         } else {
             value = Mathf.Ceil(value * (1 / precision)) * precision; //converts 0.452 to 0.4.
         }
-        Debug.Log("Rounded value: " + value);
+        //Debug.Log("Rounded value: " + value);
         float intVal = ((value) * (1f / precision)); //1.4 should be 14
 
-        Debug.Log("IntVal: " + intVal);
+        //Debug.Log("IntVal: " + intVal);
         //compress values [0->11]
         WriteInt(stream, (int)intVal, 0, intMax);
     }
 
     public static float ReadFloat(this InputStream stream, float minValue = float.MinValue, float maxValue = float.MaxValue, float precision = 0.0000001f) {
         int intMax = (int)((maxValue - minValue + precision) * (1f / precision));
-        Debug.Log("read intMax: " + intMax);
+        //Debug.Log("read intMax: " + intMax);
         int intVal = ReadInt(stream, 0, intMax);
         float value = (intVal * precision) + minValue;
         //need to clean it up because sometimes we're getting 1.000001 with 0.1 prec, so fix that

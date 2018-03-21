@@ -203,6 +203,14 @@ public class BitwiseMemoryOutputStream {
         WriteLong(data, bitCount);
     }
 
+
+    ///Writes a full byte array to the buffer?
+    public void WriteBytes(byte[] data, int dataLength) {
+        for(int i = 0; i < data.Length; i++) {
+            WriteByte(data[i]);
+        }
+    }
+
     /**
      * writes a byte value to buffer by 8 bits
      */

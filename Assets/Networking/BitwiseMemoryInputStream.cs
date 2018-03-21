@@ -188,6 +188,15 @@ public class BitwiseMemoryInputStream {
         return (ReadBits(1) == 1);
     }
 
+    ///reads dataLength number of bytes and returns them in a byte array
+    public byte[] ReadBytes(int dataLength) {
+        byte[] d = new byte[dataLength];
+        for(int i = 0; i < dataLength; i++) {
+            d[i] = ReadByte();
+        }
+        return d;
+    }
+
     /**
      * reads a byte value from buffer by 8 bits
      */

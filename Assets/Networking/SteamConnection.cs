@@ -16,8 +16,14 @@ public class SteamConnection {
     public List<float> openPings = new List<float>();
     public float connectionEstablishedTime = 0f;
     public float timeSinceLastMsg = 0f; //send or rec
-    //we want the connection state here too... 
-    //how do we get that... 
+
+    public GameObject[] entities; //entities this connection owns.  Everyone replicates this list, or tries to.
+
+    public SteamConnection() {
+        if(Core.net == null) return; //this should only return true in the editor.  Odin does something weird that throws errors.
+        int max = Core.net.maxNetworkIds;
+        entities = new GameObject[max];
+    }
     
     //Returns true if you have higher auth than c, this means you're responisible for sending data to them
     //like state data or keep alives or whatever
