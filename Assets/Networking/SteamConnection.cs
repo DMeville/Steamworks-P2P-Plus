@@ -17,12 +17,16 @@ public class SteamConnection {
     public float connectionEstablishedTime = 0f;
     public float timeSinceLastMsg = 0f; //send or rec
 
-    public GameObject[] entities; //entities this connection owns.  Everyone replicates this list, or tries to.
+    public NetworkGameObject[] entities; //entities this connection owns.  Everyone replicates this list, or tries to.
 
     public SteamConnection() {
         if(Core.net == null) return; //this should only return true in the editor.  Odin does something weird that throws errors.
         int max = Core.net.maxNetworkIds;
-        entities = new GameObject[max];
+        entities = new NetworkGameObject[max];
+    }
+
+    public void RecEntityUpdate(int owner, int networkId, int stateType, params object[] args) {
+        entities[networkId].OnStateUpdateReceived(owner, networkId, stateType, args);
     }
     
     //Returns true if you have higher auth than c, this means you're responisible for sending data to them

@@ -27,6 +27,12 @@ public class Test : MonoBehaviour {
         //so we need to id them somehow.  We can't just "add to a list" because we can't guarentee order.
         //uint16 would give us [0-> 65535] values in[00000000 00000000] bits. Which is probably a small enough overhead.
         //we could combine state updates too so we don't send networkid per property update.  State updates will probably be atomic.
+        int maxValue = 10;
+        int minValue = -10;
+        float precision = 0.001f;
+
+        int intMax = (int)((maxValue - minValue + precision) * (1f / precision));
+        Debug.Log("bits: " + SerializerUtils.RequiredBits(0, intMax));
 
     }
 }

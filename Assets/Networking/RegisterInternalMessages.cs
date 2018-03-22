@@ -19,6 +19,10 @@ public class RegisterInternalMessages  {
         Core.net.RegisterMessageType("Pong", null, null, OnRecPong);
         Core.net.RegisterMessageType("Pung", null, null, OnRecPung); //lulwut. Ping -> Pong -> Pung so we can get the ping on both sides we need two timestamps on each side. There must be a better way
         Core.net.RegisterMessageType("SpawnPrefab", SSpawnPrefab, DSpawnPrefab, PSpawnPrefab);
+        Core.net.RegisterMessageType("StateUpdate", SStateUpdate, DStateUpdate, PStateUpdate);
+
+
+        Core.net.RegisterStateType("CubeState", CubeBehaviour.SerializeState, CubeBehaviour.DeserializeState);
     }
 
     //ConnectionResponse Serailize/Deserialize/Process methods
@@ -154,7 +158,6 @@ public class RegisterInternalMessages  {
             Core.net.RegisterConnection(sender, (int)args[1]);
             Core.net.me.connectionIndex = (int)args[2];
             Core.net.connectionCounter = Core.net.me.connectionIndex;
-
         }
 
         Core.net.ConnectedToHost(sender);
@@ -208,5 +211,57 @@ public class RegisterInternalMessages  {
         int controller = (int)args[3];
 
         GameObject spawned = Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller);
+    }
+
+    private static byte[] SStateUpdate(ulong receiver, int msgCode, params object[] args) {
+        //do we need to send owner? we're receiving data from someone who should always be the owner, I think?
+        //so could just check connections[sender] to query the state update?
+        //just do this for now, think about it later
+        int owner = (int)args[0];
+        int networkId = (int)args[1];
+        int stateCode = (int)args[2];
+
+        OutputStream o = new OutputStream();
+
+        o.WriteInt(owner, 0, Core.net.maxPlayers);
+        o.WriteInt(networkId, 0, Core.net.maxNetworkIds);
+        o.WriteInt(stateCode, 0, Core.net.maxStates);
+
+
+
+        //SerializeState(stateType, args[3], args[4], args[5]) //custom state serialize of three floats on the entity
+        //byte[] stateData = Core.net.StateSerializeActions[stateType](args[3], args[4], args[5]);
+        //
+        return Core.net.SerializeState(receiver, msgCode, owner, networkId, stateCode, o, args);
+    }
+
+    private static void DStateUpdate(ulong sender, int msgCode, byte[] data) {
+        InputStream i = new InputStream(data);
+        int owner = i.ReadInt(0, Core.net.maxPlayers);
+        int networkId = i.ReadInt(0, Core.net.maxNetworkIds);
+        int stateCode = i.ReadInt(0, Core.net.maxStates);
+
+        Core.net.DeserializeState(sender, msgCode, owner, networkId, stateCode, i);
+        //byte[] stateData = i.ReadBytes()
+
+        //Core.net.StateDeseralizeActions[stateType](sender, msgCode, owner, networkId, statetype, InputStream i) //so we can read from the current stream still
+        //where we read in the ints, and call Core.net.Process on the data there..
+        //we need this function as to act as an inbetween because we need to read in the networkId and stateType
+        //in order to know what to do with this state data, and where to send it.
+
+        //Core.net.Process(sender, msgCode, owner, networkId, stateType, x, y , z);
+    }
+
+    private static void PStateUpdate(ulong sender, params object[] args) {
+        //find entity with network id and owner
+        int owner = (int)args[0];
+        int networkId = (int)args[1];
+        int stateType = (int)args[2];
+       
+        //byte[] stateData = (byte[])args[3];
+
+        if(Core.net.connections.ContainsKey(sender)) {
+            Core.net.connections[sender].RecEntityUpdate(owner, networkId, stateType, args); 
+        }
     }
 }

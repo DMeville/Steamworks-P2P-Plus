@@ -6,6 +6,8 @@ using System.Text;
 using UnityEngine;
 using System.Linq;
 using System;
+using InputStream = BitwiseMemoryInputStream;
+using OutputStream = BitwiseMemoryOutputStream;
 
 public class NetworkManager:SerializedMonoBehaviour {
     public static NetworkManager instance;
@@ -19,19 +21,28 @@ public class NetworkManager:SerializedMonoBehaviour {
     public Dictionary<ulong, SteamConnection> connections = new Dictionary<ulong, SteamConnection>();
     public int connectionCounter = 0;
 
+    //message stff
     public List<string> MessageCodes = new List<string>();
     public List<SerializerAction> SerializeActions = new List<SerializerAction>();
     public List<DeserializerAction> DeserializeActions = new List<DeserializerAction>();
     public List<ProcessDeserializedDataAction> ProcessDeserializedDataActions = new List<ProcessDeserializedDataAction>();
 
-    public delegate byte[] SerializerAction(ulong receiver, int msgType, params object[] args);
-    public delegate void DeserializerAction(ulong sender, int msgType, byte[] data);
+    public delegate byte[] SerializerAction(ulong receiver, int mscCode, params object[] args);
+    public delegate void DeserializerAction(ulong sender, int mscCode, byte[] data);
     public delegate void ProcessDeserializedDataAction(ulong sender, params object[] args);
+
+    //state stuff
+    public delegate byte[] StateSerializerAction(ulong receiver, int msgCode, int owner, int networkId, int stateCode, OutputStream stream, params object[] args);
+    public delegate void StateDeserializerAction(ulong sender, int msgCode, int owner, int networkId, int stateCode, InputStream stream);
+    public List<string> StateCodes = new List<string>();
+    public List<StateSerializerAction> StateSerializeActions = new List<StateSerializerAction>();
+    public List<StateDeserializerAction> StateDeserializeActions = new List<StateDeserializerAction>();
 
 
     public int maxPlayers = 255; //connected at once. should be a power of 2 (-1). 2, 4, 8, 16, 32, 64, 128, 256.  etc.  Used for packing data, so leaving this at 255 when you only connect 4 players would be a huge waste.  don't  do that.
     public int maxPrefabs = 4095; //[0-maxPrefab] range for bitpacking.  The fewer prefabs we have, the better we can pack.  255 fits in 8 bits.  These are prefabs you can spawn over the network.
     public int maxNetworkIds = 4095; // sent over the net as (connectionNum) (networkId). since every client can spawn prefabs, this will ensure no overlap while not having to sync lists, or go through one player to ensure no overlap. 
+    public int maxStates = 255; //separate state defintions.  Need to do lookups so we know how to read/write custom state data.
     private int networkIds = 0;
 
     public Dictionary<string, int> NetworkPrefabsNames = new Dictionary<string, int>(); 
@@ -94,17 +105,18 @@ public class NetworkManager:SerializedMonoBehaviour {
             ngo.prefabId = prefabId;
             ngo.owner = owner;
             ngo.controller = controller;
+
+            if(me.connectionIndex == owner) {
+                me.entities[networkId] = ngo;
+            } else {
+                SteamConnection c = connections.Values.Where(s => s.connectionIndex == owner).First();
+                c.entities[networkId] = ngo;
+            }
+
             ngo.OnSpawn();
         }
 
-        if(spawned != null) {
-            if(me.connectionIndex == owner) {
-                me.entities[networkId] = spawned;
-            } else {
-                SteamConnection c = connections.Values.Where(s => s.connectionIndex == owner).First();
-                c.entities[networkId] = spawned;
-            }
-        }
+
         return spawned;
     }
 
@@ -147,25 +159,54 @@ public class NetworkManager:SerializedMonoBehaviour {
         return messageId;
     }
 
-    public void Process(ulong sender, int msgType, params object[] args) {
-        NetworkManager.instance.ProcessDeserializedDataActions[msgType](sender, args);
+    public void Process(ulong sender, int msgCode, params object[] args) {
+        NetworkManager.instance.ProcessDeserializedDataActions[msgCode](sender, args);
     }
 
-    public byte[] Serialize(ulong receiver, int msgId, params object[] args) {
-        return SerializeActions[msgId](receiver, msgId, args);
+    public byte[] Serialize(ulong receiver, int msgCode, params object[] args) {
+        return SerializeActions[msgCode](receiver, msgCode, args);
     }
 
-    public void Deserialize(ulong sender, int msgId, byte[] data) {
-        DeserializeActions[msgId](sender, msgId, data);
+    public void Deserialize(ulong sender, int msgCode, byte[] data) {
+        DeserializeActions[msgCode](sender, msgCode, data);
     }
     #endregion
+
 
     public int GetMessageCode(string messageName) {
         if(MessageCodes.Contains(messageName)) {
             return MessageCodes.IndexOf(messageName);
         }
         throw new Exception("Message with name [" + messageName + "] does not exist");
-        return -1;
+    }
+
+
+    //state stuff
+    public int RegisterStateType(string stateName, StateSerializerAction serialize, StateDeserializerAction deserialize) {
+        if(StateCodes.Contains(stateName)) {
+            Debug.LogException(new Exception("Can not register state type [" + stateName + "] because a state already exists with that name"));
+        }
+
+        StateCodes.Add(stateName);
+        StateSerializeActions.Add(serialize);
+        StateDeserializeActions.Add(deserialize);
+        int stateId = StateCodes.Count - 1;
+        return stateId;
+    }
+
+    public byte[] SerializeState(ulong receiver, int msgCode, int owner, int networkId, int stateCode, OutputStream stream, params object[] args) {
+        return StateSerializeActions[stateCode](receiver, msgCode, owner, networkId, stateCode, stream, args);
+    }
+
+    public void DeserializeState(ulong sender, int msgCode, int owner, int networkId, int stateCode, InputStream stream) {
+        StateDeserializeActions[stateCode](sender, msgCode, owner, networkId, stateCode, stream);
+    }
+
+    public int GetStateCode(string stateName) {
+        if(StateCodes.Contains(stateName)) {
+            return StateCodes.IndexOf(stateName);
+        }
+        throw new Exception("State with name [" + stateName + "] does nto exist");
     }
 
     //queue message to go out in the next packet (will be priority filtering eventually)
@@ -176,7 +217,7 @@ public class NetworkManager:SerializedMonoBehaviour {
     }
 
     public void QueueMessage(ulong sendTo, int msgCode, params object[] args) {
-        Debug.Log("[SEND] " + MessageCodes[msgCode]);
+        //Debug.Log("[SEND] " + MessageCodes[msgCode]);
         byte[] data = PackMessage(sendTo, msgCode, args);
         SendP2PData(sendTo, data, data.Length, Networking.SendType.ReliableWithBuffering);        
         //SendP2PData(sendTo, data, data.Length);
@@ -188,7 +229,7 @@ public class NetworkManager:SerializedMonoBehaviour {
     /// use QueueMessage instead
     /// </summary>
     public void SendMessage(ulong sendTo, int msgCode, params object[] args) {
-        Debug.Log("[SEND]  " + MessageCodes[msgCode]);
+        //Debug.Log("[SEND]  " + MessageCodes[msgCode]);
         byte[] data = PackMessage(sendTo, msgCode, args);
         SendP2PData(sendTo, data, data.Length, Networking.SendType.Reliable);
     }
@@ -229,11 +270,11 @@ public class NetworkManager:SerializedMonoBehaviour {
         byte[] msgCodeBytes = bytes.Take(1).ToArray();
 
         int msgCode = msgCodeBytes[0];
-        Debug.Log("[REC] " + MessageCodes[msgCode]);
+        //Debug.Log("[REC] " + MessageCodes[msgCode]);
 
         byte[] msgData = null;
         if(DeserializeActions[msgCode] != null) {
-           msgData = bytes.Skip(1).ToArray();
+            msgData = bytes.Skip(1).ToArray();
             NetworkManager.instance.Deserialize(steamID, msgCode, msgData);
         } else {
             NetworkManager.instance.Process(steamID, msgCode); //usually called in Deserialize, but since we have no data just forward the messageCode
@@ -298,7 +339,9 @@ public class NetworkManager:SerializedMonoBehaviour {
     //here we can spawn our client player, or set up more data or something
     public void ConnectedToHost(ulong host) {
         Debug.Log("ConnectedToHost:: SpawnPrefab");
-        Core.net.SpawnPrefab(0);
+        for(int i = 0; i < 4; i++) {
+            Core.net.SpawnPrefab(0);
+        }
     }
 
     //Update just handles checking the session state of all current connections, and if anyone has timed out/disconnected
@@ -322,6 +365,8 @@ public class NetworkManager:SerializedMonoBehaviour {
                         c.Ping();
                     }
                 }
+
+                
 
                 Facepunch.Steamworks.Client.Instance.Networking.GetSessionState(c.steamID, out c.connectionState);
 

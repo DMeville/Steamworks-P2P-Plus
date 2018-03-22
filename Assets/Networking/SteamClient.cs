@@ -118,7 +118,9 @@ public class SteamClient:MonoBehaviour {
                     UnityEngine.Profiling.Profiler.BeginSample("Send P2P");
 
                     //Core.net.QueueMessage(steamid, 2, UnityEngine.Random.Range(0, 40));
-                    Core.net.SpawnPrefab(0);
+                    //for(int i = 0; i < 10; i++) {
+                    //    Core.net.SpawnPrefab(0);
+                    //}
                     //might need a way to ensure messageType and the parameters match.
                     //pass in paramters with the register so we can check against the args list?
                     //idk
