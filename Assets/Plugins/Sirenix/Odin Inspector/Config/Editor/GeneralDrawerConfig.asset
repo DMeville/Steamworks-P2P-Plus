@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Name: GeneralDrawerConfig
   m_EditorClassIdentifier: 
   showMonoScriptInEditor: 1
-  expandFoldoutByDefault: 1
+  expandFoldoutByDefault: 0
   hideFoldoutWhileEmpty: 1
-  openListsByDefault: 1
+  openListsByDefault: 0
   showItemCount: 1
   numberOfItemsPrPage: 15
   hidePagingWhileCollapsed: 1

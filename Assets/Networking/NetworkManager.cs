@@ -6,8 +6,9 @@ using System.Text;
 using UnityEngine;
 using System.Linq;
 using System;
-using InputStream = BitwiseMemoryInputStream;
-using OutputStream = BitwiseMemoryOutputStream;
+
+using BitTools;
+using ByteStream = UdpKit.UdpStream;
 
 public class NetworkManager:SerializedMonoBehaviour {
     public static NetworkManager instance;
@@ -21,34 +22,29 @@ public class NetworkManager:SerializedMonoBehaviour {
     public Dictionary<ulong, SteamConnection> connections = new Dictionary<ulong, SteamConnection>();
     public int connectionCounter = 0;
 
-    //message stff
-    public List<string> MessageCodes = new List<string>();
-    public List<SerializerAction> SerializeActions = new List<SerializerAction>();
-    public List<DeserializerAction> DeserializeActions = new List<DeserializerAction>();
-    public List<ProcessDeserializedDataAction> ProcessDeserializedDataActions = new List<ProcessDeserializedDataAction>();
-
-    public delegate byte[] SerializerAction(ulong receiver, int mscCode, params object[] args);
-    public delegate void DeserializerAction(ulong sender, int mscCode, byte[] data);
-    public delegate void ProcessDeserializedDataAction(ulong sender, params object[] args);
-
-    //state stuff
-    public delegate byte[] StateSerializerAction(ulong receiver, int msgCode, int owner, int networkId, int stateCode, OutputStream stream, params object[] args);
-    public delegate void StateDeserializerAction(ulong sender, int msgCode, int owner, int networkId, int stateCode, InputStream stream);
-    public List<string> StateCodes = new List<string>();
-    public List<StateSerializerAction> StateSerializeActions = new List<StateSerializerAction>();
-    public List<StateDeserializerAction> StateDeserializeActions = new List<StateDeserializerAction>();
-
-
     public int maxPlayers = 255; //connected at once. should be a power of 2 (-1). 2, 4, 8, 16, 32, 64, 128, 256.  etc.  Used for packing data, so leaving this at 255 when you only connect 4 players would be a huge waste.  don't  do that.
     public int maxPrefabs = 4095; //[0-maxPrefab] range for bitpacking.  The fewer prefabs we have, the better we can pack.  255 fits in 8 bits.  These are prefabs you can spawn over the network.
     public int maxNetworkIds = 4095; // sent over the net as (connectionNum) (networkId). since every client can spawn prefabs, this will ensure no overlap while not having to sync lists, or go through one player to ensure no overlap. 
     public int maxStates = 255; //separate state defintions.  Need to do lookups so we know how to read/write custom state data.
     private int networkIds = 0;
+    public int packetSize = 1024 * 2; //(udpkit default, dunno)
 
-    public Dictionary<string, int> NetworkPrefabsNames = new Dictionary<string, int>(); 
-    public List<GameObject> NetworkPrefabs = new List<GameObject>(); //
+    //per player, we clear between each queue.
+    public ByteStream readStream = new ByteStream(new byte[1024 * 2]); //max packet size 1024 bytes? (not sure why x2, but that's how udpkit did it)
+    public ByteStream writeStream = new ByteStream(new byte[1024 * 2]);
 
-    public List<GameObject> registerPrefabs = new List<GameObject>();
+
+    //msgCodes
+    public List<string> MessageCodes = new List<string>();
+    public List<MessageSerializer> MessageSerializers = new List<MessageSerializer>();
+    public List<MessageDeserializer> MessageDeserializers = new List<MessageDeserializer>();
+    public List<MessageProcessor> MessageProcessors = new List<MessageProcessor>();
+    public List<MessagePeeker> MessagePeekers = new List<MessagePeeker>();
+
+    public delegate void MessageSerializer(ulong receiver, ByteStream stream, params object[] args); //writes args to stream
+    public delegate void MessageDeserializer(ulong sender, int msgCode, ByteStream stream); //reads args from stream (and then forwards that data to processor)
+    public delegate void MessageProcessor(ulong sender, params object[] args); //does whatever with the data. Update state, notify a manager, etc
+    public delegate int MessagePeeker(params object[] args); //peeks into the message to find out how many bits we need to write it. Used for packing
 
     void Awake() {
         DontDestroyOnLoad(this.gameObject);
@@ -57,121 +53,30 @@ public class NetworkManager:SerializedMonoBehaviour {
 
         networkSimulationTimer = (1f / 60f) * (60f / networkSimulationRate);
         //register internal message types
-        RegisterInternalMessages.Register(); //to tidy it up, moved all this stuff to a nother class
-        
-        for(int i = 0; i < registerPrefabs.Count; i++) {
-            RegisterPrefab(registerPrefabs[i].name, registerPrefabs[i]);
-        }
+        //RegisterInternalMessages.Register(); //to tidy it up, moved all this stuff to a nother class
+
+        readStream = new ByteStream(new byte[packetSize]); //max packet size 1024 bytes? (not sure why x2, but that's how udpkit did it)
+        writeStream = new ByteStream(new byte[packetSize]);
+
+        RegisterMessageType("Empty", null, null, null, null); //added to the end of the packet so we don't read to the end if we don't have to.
+        RegisterMessageType("ConnectRequest", null, null, null, MessageCode.ConnectRequest.Process);
+        RegisterMessageType("ConnectRequestResponse", MessageCode.ConnectRequestResponse.Peek, MessageCode.ConnectRequestResponse.Serialize, MessageCode.ConnectRequestResponse.Deserialize, MessageCode.ConnectRequestResponse.Process);
     }
 
-    public int RegisterPrefab(string prefabName, GameObject prefab) {
-        if(NetworkPrefabsNames.ContainsKey(prefabName)) {
-            Debug.LogException(new Exception("Can not register prefab [" + prefabName + "] because a prefab already exists with that name"));
-        }
 
-        NetworkPrefabs.Add(prefab);
-        int prefabId = NetworkPrefabs.Count - 1;
-        NetworkPrefabsNames.Add(prefabName, prefabId); 
-        //Debug.Log("Registered Prefab: " + prefabName + " - id: " + prefabId);
-        return prefabId;
-    }
-
-    public GameObject GetPrefab(int prefabId) {
-        if(NetworkPrefabs.WithinRange(prefabId)) {
-            return NetworkPrefabs[prefabId];
-        } else {
-            Debug.LogError("Prefab id [" + prefabId + "] is outside the range of [0, " + maxPrefabs + "]");
-            return null;
-        }
-    }
-
-    public GameObject GetPrefab(string prefabName) {
-        if(NetworkPrefabsNames.ContainsKey(prefabName)) {
-            return GetPrefab(NetworkPrefabsNames[prefabName]);
-        } else {
-            Debug.LogError("Prefab with name [" + prefabName + "] does not exist in the prefab database");
-            return null;
-        }
-    }
-
-    ///Used internally.  Don't use this.
-    public GameObject SpawnPrefabInternal(int prefabId, int networkId, int owner, int controller) {
-        GameObject prefab = Core.net.GetPrefab(prefabId);
-        GameObject spawned = null;
-        if(prefab != null) {
-            spawned = GameObject.Instantiate(prefab);
-            NetworkGameObject ngo = spawned.GetComponent<NetworkGameObject>();
-            ngo.networkId = networkId;
-            ngo.prefabId = prefabId;
-            ngo.owner = owner;
-            ngo.controller = controller;
-
-            if(me.connectionIndex == owner) {
-                me.entities[networkId] = ngo;
-            } else {
-                SteamConnection c = connections.Values.Where(s => s.connectionIndex == owner).First();
-                c.entities[networkId] = ngo;
-            }
-
-            ngo.OnSpawn();
-        }
-
-
-        return spawned;
-    }
-
-    /// <summary>
-    /// Spawns a prefab on our client, and replicates it across the network automatically (no data yet, just the object creation)
-    /// </summary>
-    /// <param name="prefabId"></param>
-    /// <returns></returns>
-    public GameObject SpawnPrefab(int prefabId) {
-
-        int networkId = GetNextNetworkId();
-        int owner = me.connectionIndex;
-        int controller = me.connectionIndex;
-
-        GameObject spawned = SpawnPrefabInternal(prefabId, networkId, owner, controller);
-        //this should probably just be picked up by the NetworkSend automatically
-        //because priorities and stuff
-        foreach(SteamConnection sc in connections.Values) {
-            Core.net.QueueMessage(sc.steamID, "SpawnPrefab", prefabId, networkId, owner, controller);
-        }
-        return spawned;
-    }
-
-    private int GetNextNetworkId() {
-        return networkIds++;
-    }
-
-    #region Message Definition Helpers
-    //Pass in null for serialize and deserialize if you have no data and just want to send a message id (for connect, keep alive, etc)
-    public int RegisterMessageType(string messageName, SerializerAction serialize, DeserializerAction deserialize, ProcessDeserializedDataAction process) {
+    public int RegisterMessageType(string messageName, MessagePeeker peeker, MessageSerializer serializer, MessageDeserializer deserializer, MessageProcessor processor) {
         if(MessageCodes.Contains(messageName)) {
             Debug.LogException(new Exception("Can not register message type [" + messageName + "] because a message already exists with that name"));
         }
         MessageCodes.Add(messageName);
-        SerializeActions.Add(serialize);
-        DeserializeActions.Add(deserialize);
-        ProcessDeserializedDataActions.Add(process);
-        int messageId = MessageCodes.Count - 1;
-        //Debug.Log("Registered Message Type: " + messageName + " - id: " + messageId);
-        return messageId;
-    }
+        MessageSerializers.Add(serializer);
+        MessageDeserializers.Add(deserializer);
+        MessageProcessors.Add(processor);
+        MessagePeekers.Add(peeker);
 
-    public void Process(ulong sender, int msgCode, params object[] args) {
-        NetworkManager.instance.ProcessDeserializedDataActions[msgCode](sender, args);
+        int msgId = MessageCodes.Count - 1;
+        return msgId;
     }
-
-    public byte[] Serialize(ulong receiver, int msgCode, params object[] args) {
-        return SerializeActions[msgCode](receiver, msgCode, args);
-    }
-
-    public void Deserialize(ulong sender, int msgCode, byte[] data) {
-        DeserializeActions[msgCode](sender, msgCode, data);
-    }
-    #endregion
-
 
     public int GetMessageCode(string messageName) {
         if(MessageCodes.Contains(messageName)) {
@@ -180,37 +85,24 @@ public class NetworkManager:SerializedMonoBehaviour {
         throw new Exception("Message with name [" + messageName + "] does not exist");
     }
 
+    //some messages we want to send immediately. Like a connection request.  Can't queue it on a connection that doesn't exsist
+    //use this in these cases.  Shouldn't be used for everything, as it's better to combine messages in the queue and sort them by
+    //priority and then send them off.
+    //this will send one packet per message you want to send.
+    public void SendMessageImmediate(ulong sendTo, int msgCode, params object[] args) {
+        writeStream.Reset(packetSize);
 
-    //state stuff
-    public int RegisterStateType(string stateName, StateSerializerAction serialize, StateDeserializerAction deserialize) {
-        if(StateCodes.Contains(stateName)) {
-            Debug.LogException(new Exception("Can not register state type [" + stateName + "] because a state already exists with that name"));
+        SerializerUtils.WriteInt(writeStream, msgCode, 0, 255);
+        if(MessageSerializers[msgCode] != null) {
+            MessageSerializers[msgCode](sendTo, writeStream, args);
+        } else {
+            //no data to go with this message, just the msgCoe
         }
 
-        StateCodes.Add(stateName);
-        StateSerializeActions.Add(serialize);
-        StateDeserializeActions.Add(deserialize);
-        int stateId = StateCodes.Count - 1;
-        return stateId;
-    }
-
-    public byte[] SerializeState(ulong receiver, int msgCode, int owner, int networkId, int stateCode, OutputStream stream, params object[] args) {
-        return StateSerializeActions[stateCode](receiver, msgCode, owner, networkId, stateCode, stream, args);
-    }
-
-    public void DeserializeState(ulong sender, int msgCode, int owner, int networkId, int stateCode, InputStream stream) {
-        StateDeserializeActions[stateCode](sender, msgCode, owner, networkId, stateCode, stream);
-    }
-
-    public int GetStateCode(string stateName) {
-        if(StateCodes.Contains(stateName)) {
-            return StateCodes.IndexOf(stateName);
-        }
-        throw new Exception("State with name [" + stateName + "] does nto exist");
+        SendP2PData(sendTo, writeStream.Data, writeStream.Position, Networking.SendType.Reliable, 0);
     }
 
     //queue message to go out in the next packet (will be priority filtering eventually)
-    //this is sent every 200ms, or once the queue reacheds MTU, or can be forced when you send a reliable message
     public void QueueMessage(ulong sendTo, string msgCode, params object[] args) {
         int iMsgCode = GetMessageCode(msgCode);
         QueueMessage(sendTo, iMsgCode, args);
@@ -218,66 +110,105 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     public void QueueMessage(ulong sendTo, int msgCode, params object[] args) {
         //Debug.Log("[SEND] " + MessageCodes[msgCode]);
-        byte[] data = PackMessage(sendTo, msgCode, args);
-        SendP2PData(sendTo, data, data.Length, Networking.SendType.ReliableWithBuffering);        
+        //int dataSize = 0;
+        //byte[] data = PackMessage(out dataSize, sendTo, msgCode, args);
+        //SendP2PData(sendTo, data, dataSize, Networking.SendType.ReliableWithBuffering);        
         //SendP2PData(sendTo, data, data.Length);
-    }
 
-    /// <summary>
-    /// shouldn't use this except for messages we want to send immediately (like connection requests/accepts or keep alives)
-    /// Or when we want to force sending any buffered messages
-    /// use QueueMessage instead
-    /// </summary>
-    public void SendMessage(ulong sendTo, int msgCode, params object[] args) {
-        //Debug.Log("[SEND]  " + MessageCodes[msgCode]);
-        byte[] data = PackMessage(sendTo, msgCode, args);
-        SendP2PData(sendTo, data, data.Length, Networking.SendType.Reliable);
-    }
-
-    public void SendMessage(ulong sendTo, string msgCode, params object[] args) {
-        int iMsgCode = GetMessageCode(msgCode);
-        SendMessage(sendTo, iMsgCode, args);
-    }
-
-    /// <summary>
-    /// Combines msgCode and serialized message data (from args) into a byte[]
-    /// </summary>
-    public byte[] PackMessage(ulong receiver, int msgCode, params object[] args) {
-        if(msgCode > 255 || msgCode < 0) throw new Exception(string.Format("msgCode [{0}] is outside the accepted range of [0-255]", msgCode));
-        byte[] data = new byte[1] { ((byte)msgCode) };
-        if(SerializeActions[msgCode] != null) { //if we just want to send an "empty" message there is no serializer/deserializer
-            byte[] msgData = Serialize(receiver, msgCode, args);
-            data = data.Append(msgData);
+        SteamConnection c = GetConnection(sendTo);
+        if(c != null) {
+            c.messageQueue.Add(new NetworkMessage(msgCode, args));
         }
-        return data;
     }
+    
+    public SteamConnection GetConnection(ulong steamId) {
+        if(connections[steamId] != null) {
+            return connections[steamId];
+        } else {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// walks through the message queue and packs the messages together and sends them off.
+    /// later we can add priority filtering to the messages we add to the message queue, as it's just sorting the queued messages in some way.
+    /// any messages that don't fit in this packet we leave until next time around (and increase their priority)
+    /// maybe we should keep two message queues, one for entity updates or something
+    /// </summary>
+    public void NetworkSend() {
+        foreach(SteamConnection sc in connections.Values) {
+            if(sc.messageQueue.Count > 0) {
+                //pack
+                writeStream.Reset(packetSize);
+                
+                //grab the first message
+                //check if it can fit in the stream
+                //if it can, remove it from the queue and write it
+                //continue until writeStream can't fit any other messages
+                //or until the message queue is empty
+
+                for(int i = 0; i < sc.messageQueue.Count; i++) {
+                    NetworkMessage m = sc.messageQueue[i];
+                    if(!writeStream.CanWrite()) {
+                        break; //ZERO room left m
+                    } else {
+                        //get the total message size to check if it will fit
+                        int msgSize = 8; //8 bits for the msgCode included before the data
+                        if(MessagePeekers[m.msgCode] != null) { //if it's null we don't have any data to send, just the msgCode (like for a keep alive)
+                            msgSize += Core.net.MessagePeekers[m.msgCode](m.args);
+                        }
+
+                        if(writeStream.CanWrite(msgSize)) { //will it fit?
+                            SerializerUtils.WriteInt(writeStream, m.msgCode, 0, 255); //write the msgCode
+                            if(MessageSerializers[m.msgCode] != null) {
+                                Core.net.MessageSerializers[m.msgCode](sc.steamID, writeStream, m.args); //write the rest of the data
+                            }
+                        } else {
+                            continue; //try the next message I guess? until the packet is full or we run out
+                        }
+                    }
+                }
+
+                //try and add a "StreamEmpty" message at the end if it fits
+                //"there are no more messages" message. Stop trying to read any data after.
+                //this isn't actually necessary, because since our Empty code is 00000000, and junk data after is 00000000
+                //it picks up the empty automagically.  Since when we grab the message code, if it's junk data it's the empty msgCode!
+                //if(writeStream.CanWrite() && writeStream.CanWrite(8)) {
+                //    SerializerUtils.WriteInt(writeStream, GetMessageCode("Empty"), 0, 255); 
+                //}
+
+                SendP2PData(sc.steamID, writeStream.Data, writeStream.Position, Networking.SendType.Reliable, 0);
+                //send it!
+            }
+        }
+    }
+
 
     //wrapper
     public bool SendP2PData(ulong steamID, byte[] data, int length, Networking.SendType sendType = Networking.SendType.Reliable, int channel = 0) {
         if(connections.ContainsKey(steamID)) {
             connections[steamID].timeSinceLastMsg = 0f;
         } //otherwise we just haven't established the connection yet (as this must be a connect request message)
+        Debug.Log("SendP2PData: " + length);
         return Client.Instance.Networking.SendP2PPacket(steamID, data, data.Length, sendType, channel);
     }
 
     //callback from SteamClient. Read the data and decide how to process it.
     public void ReceiveP2PData(ulong steamID, byte[] bytes, int length, int channel) {
-        //[00000000][0000....0000] ...
-        //byte[0] => number of messages packed into this packet
-        //byte[0] => message code
-        //byte[1->n] => data for the message
+        readStream = new UdpKit.UdpStream(bytes, length);
+        //string s = stream.ReadString();
+        while(readStream.CanRead() && readStream.CanRead(8)) {
+            int msgCode = (int)SerializerUtils.ReadInt(readStream, 0, 255);
+            Debug.Log("[REC] MessageCode: " + msgCode);
+            if(msgCode == GetMessageCode("Empty")) {
+                break; //no more data, the rest of this packet is junk
+            } 
 
-        byte[] msgCodeBytes = bytes.Take(1).ToArray();
-
-        int msgCode = msgCodeBytes[0];
-        //Debug.Log("[REC] " + MessageCodes[msgCode]);
-
-        byte[] msgData = null;
-        if(DeserializeActions[msgCode] != null) {
-            msgData = bytes.Skip(1).ToArray();
-            NetworkManager.instance.Deserialize(steamID, msgCode, msgData);
-        } else {
-            NetworkManager.instance.Process(steamID, msgCode); //usually called in Deserialize, but since we have no data just forward the messageCode
+            if(MessageDeserializers[msgCode] != null) {
+                MessageDeserializers[msgCode](steamID, msgCode, readStream);
+            } else {
+                MessageProcessors[msgCode](steamID); //process is usually called within the deserializer, but since we have no deserializer (because we have no data, just a msgCode), call it here.
+            }
         }
     }
 
@@ -303,6 +234,29 @@ public class NetworkManager:SerializedMonoBehaviour {
         if(connections.ContainsKey(steamID)) {
             connections.Remove(steamID);
         }
+    }
+
+    public void OnConnectRequest(ulong sender) {
+        if(sender != me.steamID) {
+            connectionCounter++;
+            RegisterConnection(sender, connectionCounter);
+        } else {
+            //we're trying to connect to ourself.  We can do this in testing, but shouldn't do it live.
+            //since we've already registred and incremented the connectionCounter for our local connection
+            //don't do it again here.
+        }
+
+        SendMessageImmediate(sender, GetMessageCode("ConnectRequestResponse"), me.connectionIndex, connectionCounter);
+    }
+
+    public void OnConnectRequestResponse(ulong sender, int senderIndex, int yourIndex) {
+        if(sender != Core.net.me.steamID) {
+            RegisterConnection(sender, senderIndex);
+            me.connectionIndex = yourIndex;
+            connectionCounter = yourIndex;
+        }
+
+        ConnectedToHost(sender);
     }
 
     //Highest Auth is the player with the lowest connectionIndex.  The host will have connectionIndex of 0
@@ -338,10 +292,10 @@ public class NetworkManager:SerializedMonoBehaviour {
     //called on a client when they successful connect to a host
     //here we can spawn our client player, or set up more data or something
     public void ConnectedToHost(ulong host) {
-        Debug.Log("ConnectedToHost:: SpawnPrefab");
-        for(int i = 0; i < 4; i++) {
-            Core.net.SpawnPrefab(0);
-        }
+        //Debug.Log("ConnectedToHost:: SpawnPrefab");
+        //for(int i = 0; i < 4; i++) {
+            //Core.net.SpawnPrefab(0);
+        //}
     }
 
     //Update just handles checking the session state of all current connections, and if anyone has timed out/disconnected
@@ -383,17 +337,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         }
     }
 
-    /// <summary>
-    /// Takes all queued messages since the last send, packs them, and sends them off
-    /// this will send ALL data, in multiple packets if necessary.  
-    /// Also grabs all states and tries to send them based on priority after the normal messages are sent.
-    /// If a state doesn't make it into this packet, the priority counter will be increased so it should send in future
-    /// sends, eventually. 
-    /// </summary>
-    public void NetworkSend() {
-        //each client has a different set of entities that need to be simulated possibly.
-        //
-    }
+  
 
 
     //cleanup method.  Closes all sessions when we close the game, this makes it so 

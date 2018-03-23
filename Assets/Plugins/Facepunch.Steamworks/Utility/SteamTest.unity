@@ -680,9 +680,21 @@ MonoBehaviour:
     - Name: 
       Entry: 8
       Data: 
-    - Name: SerializeActions
+    - Name: readStream
       Entry: 7
-      Data: 2|System.Collections.Generic.List`1[[NetworkManager+SerializerAction,
+      Data: 2|UdpKit.UdpStream, Assembly-CSharp
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: writeStream
+      Entry: 7
+      Data: 3|UdpKit.UdpStream, Assembly-CSharp
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: MessageSerializers
+      Entry: 7
+      Data: 4|System.Collections.Generic.List`1[[NetworkManager+MessageSerializer,
         Assembly-CSharp]], mscorlib
     - Name: 
       Entry: 12
@@ -693,9 +705,9 @@ MonoBehaviour:
     - Name: 
       Entry: 8
       Data: 
-    - Name: DeserializeActions
+    - Name: MessageDeserializers
       Entry: 7
-      Data: 3|System.Collections.Generic.List`1[[NetworkManager+DeserializerAction,
+      Data: 5|System.Collections.Generic.List`1[[NetworkManager+MessageDeserializer,
         Assembly-CSharp]], mscorlib
     - Name: 
       Entry: 12
@@ -706,9 +718,9 @@ MonoBehaviour:
     - Name: 
       Entry: 8
       Data: 
-    - Name: ProcessDeserializedDataActions
+    - Name: MessageProcessors
       Entry: 7
-      Data: 4|System.Collections.Generic.List`1[[NetworkManager+ProcessDeserializedDataAction,
+      Data: 6|System.Collections.Generic.List`1[[NetworkManager+MessageProcessor,
         Assembly-CSharp]], mscorlib
     - Name: 
       Entry: 12
@@ -719,43 +731,10 @@ MonoBehaviour:
     - Name: 
       Entry: 8
       Data: 
-    - Name: StateSerializeActions
+    - Name: MessagePeekers
       Entry: 7
-      Data: 5|System.Collections.Generic.List`1[[NetworkManager+StateSerializerAction,
-        Assembly-CSharp]], mscorlib
-    - Name: 
-      Entry: 12
-      Data: 0
-    - Name: 
-      Entry: 13
-      Data: 
-    - Name: 
-      Entry: 8
-      Data: 
-    - Name: StateDeserializeActions
-      Entry: 7
-      Data: 6|System.Collections.Generic.List`1[[NetworkManager+StateDeserializerAction,
-        Assembly-CSharp]], mscorlib
-    - Name: 
-      Entry: 12
-      Data: 0
-    - Name: 
-      Entry: 13
-      Data: 
-    - Name: 
-      Entry: 8
-      Data: 
-    - Name: NetworkPrefabsNames
-      Entry: 7
-      Data: 7|System.Collections.Generic.Dictionary`2[[System.String, mscorlib],[System.Int32,
-        mscorlib]], mscorlib
-    - Name: comparer
-      Entry: 7
-      Data: 8|System.Collections.Generic.GenericEqualityComparer`1[[System.String,
-        mscorlib]], mscorlib
-    - Name: 
-      Entry: 8
-      Data: 
+      Data: 7|System.Collections.Generic.List`1[[NetworkManager+MessagePeeker, Assembly-CSharp]],
+        mscorlib
     - Name: 
       Entry: 12
       Data: 0
@@ -776,26 +755,25 @@ MonoBehaviour:
     timeSinceLastMsg: 0
     entities: []
   connectionCounter: 0
-  MessageCodes: []
-  StateCodes: []
   maxPlayers: 255
   maxPrefabs: 4095
   maxNetworkIds: 4095
   maxStates: 255
-  NetworkPrefabs: []
-  registerPrefabs:
-  - {fileID: 1575769760310490, guid: edf9792a63f04d8488aa0f076aefde35, type: 2}
+  packetSize: 2048
+  MessageCodes: []
 --- !u!114 &862127749
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
   m_GameObject: {fileID: 862127745}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3776257350ef3db4ab1ff887dcf271d7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  messageTimer: 0
+  numMessages: 100
 --- !u!114 &862127750
 MonoBehaviour:
   m_ObjectHideFlags: 0

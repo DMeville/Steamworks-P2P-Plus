@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-using InputStream = BitwiseMemoryInputStream;
-using OutputStream = BitwiseMemoryOutputStream;
 
 public class CubeBehaviour : NetworkGameObject {
 
@@ -108,55 +106,59 @@ public class CubeBehaviour : NetworkGameObject {
         }
     }
 
+    public static int GetSerializeStateSize() {
+        return 0;
+    }
 
-    public new static byte[] SerializeState(ulong receiver, int msgCode, int owner, int networkId, int stateCode, OutputStream stream, params object[] args) {
-        bool isSleeping = (bool)args[3];
-        stream.WriteBool(isSleeping);
+    //public new static byte[] SerializeState(ulong receiver, int msgCode, int owner, int networkId, int stateCode, OutputStream stream, params object[] args) {
+    //    bool isSleeping = (bool)args[3];
+    //    stream.WriteBool(isSleeping);
 
-        if(!isSleeping) {
-            float x = (float)args[4];
-            float y = (float)args[5];
-            float z = (float)args[6];
-            bool tc = (bool)args[7];
-            float qw = (float)args[8];
-            float qx = (float)args[9];
-            float qy = (float)args[10];
-            float qz = (float)args[11];
+    //    if(!isSleeping) {
+    //        float x = (float)args[4];
+    //        float y = (float)args[5];
+    //        float z = (float)args[6];
+    //        bool tc = (bool)args[7];
+    //        float qw = (float)args[8];
+    //        float qx = (float)args[9];
+    //        float qy = (float)args[10];
+    //        float qz = (float)args[11];
        
-            stream.WriteFloat(x, -10f, 10f, 0.001f);
-            stream.WriteFloat(y, -10f, 10f, 0.001f);
-            stream.WriteFloat(z, -10f, 10f, 0.001f);
-            stream.WriteBool(tc);
-            stream.WriteFloat(qw, -1f, 1f, 0.001f);
-            stream.WriteFloat(qx, -1f, 1f, 0.001f);
-            stream.WriteFloat(qy, -1f, 1f, 0.001f);
-            stream.WriteFloat(qz, -1f, 1f, 0.001f);
-            //116 bits per update max * 10 cubes / 8bitsperbyte
-            //145bytes per state update every frame
-        } else {
-            stream.WriteBool((bool)args[4]);
-        }
+    //        //stream.WriteFloat(x, -10f, 10f, 0.001f);
+    //        //stream.WriteFloat(y, -10f, 10f, 0.001f);
+    //        //stream.WriteFloat(z, -10f, 10f, 0.001f);
+    //        //stream.WriteBool(tc);
+    //        //stream.WriteFloat(qw, -1f, 1f, 0.001f);
+    //        //stream.WriteFloat(qx, -1f, 1f, 0.001f);
+    //        //stream.WriteFloat(qy, -1f, 1f, 0.001f);
+    //        //stream.WriteFloat(qz, -1f, 1f, 0.001f);
+    //        //116 bits per update max * 10 cubes / 8bitsperbyte
+    //        //145bytes per state update (10 cubes) every frame
+    //        //
+    //    } else {
+    //        stream.WriteBool((bool)args[4]);
+    //    }
 
-        return stream.GetBuffer();
-    }
+    //    return stream.GetBuffer();
+    //}
 
-    public new static void DeserializeState(ulong sender, int msgCode, int owner, int networkId, int stateCode, InputStream stream) {
-        bool isSleeping = stream.ReadBool();
-        if(!isSleeping) {
-            float x = stream.ReadFloat(-10f, 10f, 0.001f);
-            float y = stream.ReadFloat(-10f, 10f, 0.001f);
-            float z = stream.ReadFloat(-10f, 10f, 0.001f);
-            bool tc = stream.ReadBool();
-            float qw = stream.ReadFloat(-1f, 1f, 0.001f);
-            float qx = stream.ReadFloat(-1f, 1f, 0.001f);
-            float qy = stream.ReadFloat(-1f, 1f, 0.001f);
-            float qz = stream.ReadFloat(-1f, 1f, 0.001f);
+    //public new static void DeserializeState(ulong sender, int msgCode, int owner, int networkId, int stateCode, InputStream stream) {
+    //    bool isSleeping = stream.ReadBool();
+    //    if(!isSleeping) {
+    //        //float x = stream.ReadFloat(-10f, 10f, 0.001f);
+    //        //float y = stream.ReadFloat(-10f, 10f, 0.001f);
+    //        //float z = stream.ReadFloat(-10f, 10f, 0.001f);
+    //        //bool tc = stream.ReadBool();
+    //        //float qw = stream.ReadFloat(-1f, 1f, 0.001f);
+    //        //float qx = stream.ReadFloat(-1f, 1f, 0.001f);
+    //        //float qy = stream.ReadFloat(-1f, 1f, 0.001f);
+    //        //float qz = stream.ReadFloat(-1f, 1f, 0.001f);
 
-            Core.net.Process(sender, msgCode, owner, networkId, stateCode, isSleeping, x, y, z, tc, qw, qx, qy, qz);
-        } else {
-            bool tc = stream.ReadBool();
-            Core.net.Process(sender, msgCode, owner, networkId, stateCode, isSleeping, tc);
+    //        //Core.net.Process(sender, msgCode, owner, networkId, stateCode, isSleeping, x, y, z, tc, qw, qx, qy, qz);
+    //    } else {
+    //        bool tc = stream.ReadBool();
+    //        //Core.net.Process(sender, msgCode, owner, networkId, stateCode, isSleeping, tc);
 
-        }
-    }
+    //    }
+    //}
 }

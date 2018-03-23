@@ -4,8 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using System.Linq;
-using InputStream = BitwiseMemoryInputStream;
-using OutputStream = BitwiseMemoryOutputStream;
+
 
 public static class SerializerUtils  {
 
@@ -65,7 +64,7 @@ public static class SerializerUtils  {
     //eg, [-4, 4] range and value of 0 gets shifted to
     // [0, 8] range and a value of 4
     //then we reverse it on the other side
-    public static void WriteInt(this OutputStream stream, int value, int minValue = int.MinValue, int maxValue = int.MaxValue) {
+    public static void WriteInt(UdpKit.UdpStream stream, int value, int minValue = int.MinValue, int maxValue = int.MaxValue) {
         int reqBit = (int)RequiredBits(minValue, maxValue);
 
         if(value < minValue || value > maxValue) {
@@ -79,11 +78,22 @@ public static class SerializerUtils  {
     }
 
 
-    public static int ReadInt(this InputStream stream, int minValue = int.MinValue, int maxValue = int.MaxValue) {
+    public static int ReadInt(UdpKit.UdpStream stream, int minValue = int.MinValue, int maxValue = int.MaxValue) {
         int reqBit = (int)RequiredBits(minValue, maxValue);
         return stream.ReadInt(reqBit) + minValue;
+    }
 
-        
+    public static int RequiredBitsInt(int minValue = int.MinValue, int maxValue = int.MaxValue) {
+        return (int)RequiredBits(minValue, maxValue);
+    }
+
+    public static int RequiredBitsBool() {
+        return 1;
+    }
+
+    public static int RequiredBitsFloat(float minValue = float.MinValue, float maxValue = float.MaxValue, float precision = 0.0000001f) {
+        int intMax = (int)((maxValue - minValue + precision) * (1f / precision)); 
+        return (int)RequiredBitsInt(0, intMax);
     }
 
     ///precision is how many digits after decimal. Max is 7 (0.0000001)
@@ -91,7 +101,7 @@ public static class SerializerUtils  {
     ///2 (1.01)
     ///3 (1.001), etc.
     ///Lower precision means fewer bits to send
-    public static void WriteFloat(this OutputStream stream, float value, float minValue = float.MinValue, float maxValue = float.MaxValue, float precision = 0.0000001f) {
+    public static void WriteFloat(UdpKit.UdpStream stream, float value, float minValue = float.MinValue, float maxValue = float.MaxValue, float precision = 0.0000001f) {
         //what is our int max value do we have from (min -> max ) with precision
         //[0->1] with 0.1 precision means
         //[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
@@ -129,7 +139,7 @@ public static class SerializerUtils  {
         WriteInt(stream, (int)intVal, 0, intMax);
     }
 
-    public static float ReadFloat(this InputStream stream, float minValue = float.MinValue, float maxValue = float.MaxValue, float precision = 0.0000001f) {
+    public static float ReadFloat(UdpKit.UdpStream stream, float minValue = float.MinValue, float maxValue = float.MaxValue, float precision = 0.0000001f) {
         int intMax = (int)((maxValue - minValue + precision) * (1f / precision));
         //Debug.Log("read intMax: " + intMax);
         int intVal = ReadInt(stream, 0, intMax);

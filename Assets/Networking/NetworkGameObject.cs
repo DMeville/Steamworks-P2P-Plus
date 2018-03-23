@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-using InputStream = BitwiseMemoryInputStream;
-using OutputStream = BitwiseMemoryOutputStream;
 
 public class NetworkGameObject : MonoBehaviour {
 
@@ -38,12 +36,12 @@ public class NetworkGameObject : MonoBehaviour {
     }
 
     ///don't use this.  This is just here so we can make copy it easily to a static method in the extended class
-    public virtual byte[] SerializeState(ulong receiver, int msgCode, int owner, int networkId, int stateCode, OutputStream stream, params object[] args) {
-        return new byte[0];
-    }
+    //public virtual byte[] SerializeState(ulong receiver, int msgCode, int owner, int networkId, int stateCode, OutputStream stream, params object[] args) {
+    //    return new byte[0];
+    //}
 
-    ///same as above
-    public virtual void DeserializeState(ulong sender, int msgCode, int owner, int networkId, int stateCode, InputStream stream) {
-    }
+    /////same as above
+    //public virtual void DeserializeState(ulong sender, int msgCode, int owner, int networkId, int stateCode, InputStream stream) {
+    //}
 
 }

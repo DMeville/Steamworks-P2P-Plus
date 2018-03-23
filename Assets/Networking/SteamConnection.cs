@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using ByteStream = UdpKit.UdpStream;
 
 /// <summary>
 /// Not actually a connection, just the node of the connection (endpoint, or us)
@@ -18,6 +19,10 @@ public class SteamConnection {
     public float timeSinceLastMsg = 0f; //send or rec
 
     public NetworkGameObject[] entities; //entities this connection owns.  Everyone replicates this list, or tries to.
+    //we need a readstream for all incoming data, and a write stream per packet. along with a message queue to each connection
+    public List<NetworkMessage> messageQueue = new List<NetworkMessage>();
+
+
 
     public SteamConnection() {
         if(Core.net == null) return; //this should only return true in the editor.  Odin does something weird that throws errors.
@@ -26,7 +31,9 @@ public class SteamConnection {
     }
 
     public void RecEntityUpdate(int owner, int networkId, int stateType, params object[] args) {
-        entities[networkId].OnStateUpdateReceived(owner, networkId, stateType, args);
+        if(entities[networkId] != null) {
+            entities[networkId].OnStateUpdateReceived(owner, networkId, stateType, args);
+        }
     }
     
     //Returns true if you have higher auth than c, this means you're responisible for sending data to them
@@ -38,8 +45,12 @@ public class SteamConnection {
     //starts the ping->pong->pung sequence so we can calculate ping
     //on both sides between this connection and me
     public void Ping() {
-        Core.net.SendMessage(steamID, "Ping");
+        //Core.net.SendMessage(steamID, "Ping");
         openPings.Add(Time.realtimeSinceStartup);
     }
+
+
+
+
 }
 

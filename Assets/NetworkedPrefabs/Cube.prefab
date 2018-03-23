@@ -128,7 +128,7 @@ MonoBehaviour:
   owner: 0
   controller: 0
   stateType: 0
-  updateRate: 0.01
+  updateRate: 0.3
   radius: 1
   orbitSpeed: 90
   deg: 0

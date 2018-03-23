@@ -90,7 +90,7 @@ public class SteamClient:MonoBehaviour {
             //int a = 255;
             //byte b = (byte)a;
             //Debug.Log(b.ToStringBinary());
-            Core.net.QueueMessage(76561198030288857, 0); //same as passing in "ConnectRequest"
+            Core.net.SendMessageImmediate(76561198030288857, 1); //same as passing in "ConnectRequest"
         }
 
         List<ulong> connectionsToClose = new List<ulong>();
@@ -116,6 +116,8 @@ public class SteamClient:MonoBehaviour {
                 Debug.Log("Sending P2P");
                 try {
                     UnityEngine.Profiling.Profiler.BeginSample("Send P2P");
+
+                    Core.net.QueueMessage(steamid, 1);
 
                     //Core.net.QueueMessage(steamid, 2, UnityEngine.Random.Range(0, 40));
                     //for(int i = 0; i < 10; i++) {

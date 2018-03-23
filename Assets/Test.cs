@@ -4,35 +4,41 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 
-using InputStream = BitwiseMemoryInputStream;
-using OutputStream = BitwiseMemoryOutputStream;
+using BitTools;
+using UdpKit;
 
 public class Test : MonoBehaviour {
 
-	void Start () {
+    public float messageTimer = 0f;
+    private float _messageTimer = 0f;
+    public int numMessages = 10;
+    void Start() {
 
-        //[0-15] or [0-f] can be stored in 4 bits (1111) = f
-        //guid = 32 (16bit) digits [00000000 0000 0000 0000 000000000000]
-        //min bits = 128.  Probably doesn't neeeed to be unique and 128bits, we can be smarter.
+        //having issues reading P2P data.  It's slow.
+        //can we change to something other than the BitwiseMemoryOutputSTream?
+        //https://github.com/DMeville/udpkit/blob/master/src/managed/udpkit/udpStream.cs 
+        //could grab that out of udpkit from fholm
+        //or https://github.com/rafvall/UnityAssets/blob/master/BitTools/Src/BitTools/BitWriter.cs
 
-        //8 bit would allow us to have 255 active entities.
-        //12 bit would allow us to have 4095 active entities.
-        //16 bit 65535.  this is 18 hours of creating one new entity per second before we reach the cap.
-        //computer would be before this anyways probably.  Good luck having 65k entities on screeeen
-        //[0000 0000 0000 0000].  Substantially less than  128 bit.  So lets not use guid for object ids.
-        //could be smarter about this too and keep a list of 4095 and "findnext" available. so if we rollover we start filling empty spots.
-        //this means we have a max entity count though
+        //in order to use this we need to know the size of the packet we want to pack at creation
+        //we could add this.. but would that be optimal?
+        //
 
-        //we need a way to know which gameobject to modify the state of when we get a state update. 
-        //so we need to id them somehow.  We can't just "add to a list" because we can't guarentee order.
-        //uint16 would give us [0-> 65535] values in[00000000 00000000] bits. Which is probably a small enough overhead.
-        //we could combine state updates too so we don't send networkid per property update.  State updates will probably be atomic.
-        int maxValue = 10;
-        int minValue = -10;
-        float precision = 0.001f;
+        byte[] b = new byte[1024 * 2]; //packetsize *2, why *2? That's what udpSocket.cs does. idk
 
-        int intMax = (int)((maxValue - minValue + precision) * (1f / precision));
-        Debug.Log("bits: " + SerializerUtils.RequiredBits(0, intMax));
+        int packetSize = 32;
 
+        UdpStream writeStream = new UdpStream(new byte[packetSize * 2]);
+        UdpStream readStream = new UdpStream(new byte[packetSize * 2]);
+
+        writeStream.WriteBool(true);
+        writeStream.WriteBool(false);
+        writeStream.WriteBool(true);
+        writeStream.WriteBool(true);
+
+        Debug.Log(BitTools.BitDisplay.BytesToString(writeStream.Data)); //this sends the entire packetSize of bytes, doesn't trim any of them off...
+        Debug.Log(writeStream.Length + " : " + writeStream.Ptr + " : " + writeStream.Position);
+        //we could arrayCopy it to the appropriate size and send that? idk
+        //steam does this internally I 
     }
 }
