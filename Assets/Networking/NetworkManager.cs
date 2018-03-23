@@ -33,7 +33,6 @@ public class NetworkManager:SerializedMonoBehaviour {
     public ByteStream readStream = new ByteStream(new byte[1024 * 2]); //max packet size 1024 bytes? (not sure why x2, but that's how udpkit did it)
     public ByteStream writeStream = new ByteStream(new byte[1024 * 2]);
 
-
     //msgCodes
     public List<string> MessageCodes = new List<string>();
     public List<MessageSerializer> MessageSerializers = new List<MessageSerializer>();
@@ -61,6 +60,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         RegisterMessageType("Empty", null, null, null, null); //added to the end of the packet so we don't read to the end if we don't have to.
         RegisterMessageType("ConnectRequest", null, null, null, MessageCode.ConnectRequest.Process);
         RegisterMessageType("ConnectRequestResponse", MessageCode.ConnectRequestResponse.Peek, MessageCode.ConnectRequestResponse.Serialize, MessageCode.ConnectRequestResponse.Deserialize, MessageCode.ConnectRequestResponse.Process);
+        RegisterMessageType("TestState", MessageCode.TestState.Peek, MessageCode.TestState.Serialize, MessageCode.TestState.Deserialize, MessageCode.TestState.Process);
     }
 
 
@@ -136,20 +136,25 @@ public class NetworkManager:SerializedMonoBehaviour {
     /// maybe we should keep two message queues, one for entity updates or something
     /// </summary>
     public void NetworkSend() {
+        //Debug.Log("NetworkSend");
+        UnityEngine.Profiling.Profiler.BeginSample("Network Send");
         foreach(SteamConnection sc in connections.Values) {
             if(sc.messageQueue.Count > 0) {
                 //pack
                 writeStream.Reset(packetSize);
-                
+
                 //grab the first message
                 //check if it can fit in the stream
                 //if it can, remove it from the queue and write it
                 //continue until writeStream can't fit any other messages
                 //or until the message queue is empty
-
+                
                 for(int i = 0; i < sc.messageQueue.Count; i++) {
+                    //Debug.Log("queue count: " + sc.messageQueue.Count);
+                    //Debug.Log("message: " + i);
                     NetworkMessage m = sc.messageQueue[i];
                     if(!writeStream.CanWrite()) {
+                        //Debug.Log("!writeStream.CanWrite()");
                         break; //ZERO room left m
                     } else {
                         //get the total message size to check if it will fit
@@ -157,13 +162,18 @@ public class NetworkManager:SerializedMonoBehaviour {
                         if(MessagePeekers[m.msgCode] != null) { //if it's null we don't have any data to send, just the msgCode (like for a keep alive)
                             msgSize += Core.net.MessagePeekers[m.msgCode](m.args);
                         }
-
+                        //Debug.Log("CanWrite: " + msgSize + " : " + writeStream.CanWrite(msgSize));
                         if(writeStream.CanWrite(msgSize)) { //will it fit?
                             SerializerUtils.WriteInt(writeStream, m.msgCode, 0, 255); //write the msgCode
                             if(MessageSerializers[m.msgCode] != null) {
                                 Core.net.MessageSerializers[m.msgCode](sc.steamID, writeStream, m.args); //write the rest of the data
                             }
+                            //Debug.Log("Wrote: " + msgSize + " : new bit position: " + writeStream.Position);
+                            //remove this message from the list.
+                            sc.messageQueue.RemoveAt(i);
+                            i--;
                         } else {
+                            //Debug.Log("trying next message, can't fit..");
                             continue; //try the next message I guess? until the packet is full or we run out
                         }
                     }
@@ -181,6 +191,7 @@ public class NetworkManager:SerializedMonoBehaviour {
                 //send it!
             }
         }
+        UnityEngine.Profiling.Profiler.EndSample();
     }
 
 
@@ -189,7 +200,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         if(connections.ContainsKey(steamID)) {
             connections[steamID].timeSinceLastMsg = 0f;
         } //otherwise we just haven't established the connection yet (as this must be a connect request message)
-        Debug.Log("SendP2PData: " + length);
+        //Debug.Log("SendP2PData: " + length);
         return Client.Instance.Networking.SendP2PPacket(steamID, data, data.Length, sendType, channel);
     }
 
@@ -199,7 +210,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         //string s = stream.ReadString();
         while(readStream.CanRead() && readStream.CanRead(8)) {
             int msgCode = (int)SerializerUtils.ReadInt(readStream, 0, 255);
-            Debug.Log("[REC] MessageCode: " + msgCode);
+            //Debug.Log("[REC] MessageCode: " + msgCode);
             if(msgCode == GetMessageCode("Empty")) {
                 break; //no more data, the rest of this packet is junk
             } 

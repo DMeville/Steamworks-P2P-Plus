@@ -5,3 +5,6 @@ Build
 *.sln
 .vs
 obj
+Assets/Plugins/CodeStage/
+
+Assets/Plugins/Sirenix/

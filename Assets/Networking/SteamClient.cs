@@ -117,7 +117,9 @@ public class SteamClient:MonoBehaviour {
                 try {
                     UnityEngine.Profiling.Profiler.BeginSample("Send P2P");
 
-                    Core.net.QueueMessage(steamid, 1);
+                    for(int i = 0; i < 1000; i++) {
+                        Core.net.QueueMessage(steamid, Core.net.GetMessageCode("TestState"), 1, 2, 3, 4.0f, 3.324f, 354.00034f);
+                    }
 
                     //Core.net.QueueMessage(steamid, 2, UnityEngine.Random.Range(0, 40));
                     //for(int i = 0; i < 10; i++) {
