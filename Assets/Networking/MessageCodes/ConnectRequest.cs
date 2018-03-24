@@ -5,6 +5,13 @@ using ByteStream = UdpKit.UdpStream;
 
 
 namespace MessageCode {
+    
+    public class Internal {
+        public static float Priority(ulong receiver, params object[] args) {
+            return 999f;
+        }
+    }
+
     public class ConnectRequest {
         public static void Process(ulong sender, params object[] args) {
             Debug.Log("On Rec ConnectRequest.Process");
@@ -44,11 +51,17 @@ namespace MessageCode {
             s += SerializerUtils.RequiredBitsInt(0, 255);
             return s;
         }
+
+        //pass in params here just in case we ever want to base priority off of *something* we're sending.
+        //eg, if speed > 1000 we want to send this NOW or something.
+        public static float Priority(ulong receiver, params object[] args) {
+            return 999f;
+        }
     }
 
     public class TestState {
         public static void Process(ulong sender, params object[] args) {
-            //Debug.Log("TestState");
+            Debug.Log("TestState : " + args[0]);
             
         }
 
@@ -99,6 +112,12 @@ namespace MessageCode {
             s += SerializerUtils.RequiredBitsFloat(0, 1024, 0.0001f);
 
             return s;
+        }
+        
+        public static float Priority(ulong receiver, params object[] args) {
+            return (float)((int)args[0]); //we send our first int as a random number between 0, 255
+                                   //so we're sorting priority based on the value we're sending.  
+            //Messages with higher arg[0] value will come through first.
         }
     }
 

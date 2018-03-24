@@ -35,15 +35,23 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     //msgCodes
     public List<string> MessageCodes = new List<string>();
+    public List<MessagePriorityCalculator> MessagePriorityCalculators = new List<MessagePriorityCalculator>();
     public List<MessageSerializer> MessageSerializers = new List<MessageSerializer>();
     public List<MessageDeserializer> MessageDeserializers = new List<MessageDeserializer>();
     public List<MessageProcessor> MessageProcessors = new List<MessageProcessor>();
     public List<MessagePeeker> MessagePeekers = new List<MessagePeeker>();
 
+    public delegate float MessagePriorityCalculator(ulong receiver, params object[] args); //calculates the priority for this message
     public delegate void MessageSerializer(ulong receiver, ByteStream stream, params object[] args); //writes args to stream
     public delegate void MessageDeserializer(ulong sender, int msgCode, ByteStream stream); //reads args from stream (and then forwards that data to processor)
     public delegate void MessageProcessor(ulong sender, params object[] args); //does whatever with the data. Update state, notify a manager, etc
     public delegate int MessagePeeker(params object[] args); //peeks into the message to find out how many bits we need to write it. Used for packing
+
+    //we need a priority system.  Every time a message in the queue is skipped we 
+    //should we define a "Priority" Message delegate, that we can call to calculate the priority 
+    //would need one for normal messages, and one for state replicate/entity events?
+    //state messages should be cleared from the queue if they sit there too long
+    //or maybe they can be replaced/updated or something with the "latest" data
 
     void Awake() {
         DontDestroyOnLoad(this.gameObject);
@@ -57,14 +65,32 @@ public class NetworkManager:SerializedMonoBehaviour {
         readStream = new ByteStream(new byte[packetSize]); //max packet size 1024 bytes? (not sure why x2, but that's how udpkit did it)
         writeStream = new ByteStream(new byte[packetSize]);
 
-        RegisterMessageType("Empty", null, null, null, null); //added to the end of the packet so we don't read to the end if we don't have to.
-        RegisterMessageType("ConnectRequest", null, null, null, MessageCode.ConnectRequest.Process);
-        RegisterMessageType("ConnectRequestResponse", MessageCode.ConnectRequestResponse.Peek, MessageCode.ConnectRequestResponse.Serialize, MessageCode.ConnectRequestResponse.Deserialize, MessageCode.ConnectRequestResponse.Process);
-        RegisterMessageType("TestState", MessageCode.TestState.Peek, MessageCode.TestState.Serialize, MessageCode.TestState.Deserialize, MessageCode.TestState.Process);
+        RegisterMessageType("Empty", null, null, null, null, null); //added to the end of the packet so we don't read to the end if we don't have to.
+        RegisterMessageType("ConnectRequest", 
+            null, 
+            null, 
+            null, 
+            null, 
+            MessageCode.ConnectRequest.Process);
+
+        RegisterMessageType("ConnectRequestResponse", 
+            MessageCode.ConnectRequestResponse.Peek, 
+            null,  //doesn't need a priority because this can not be queued, because it's sent before the connection is established
+            MessageCode.ConnectRequestResponse.Serialize, 
+            MessageCode.ConnectRequestResponse.Deserialize, 
+            MessageCode.ConnectRequestResponse.Process);
+
+        RegisterMessageType("TestState", 
+            MessageCode.TestState.Peek, 
+            MessageCode.TestState.Priority, 
+            MessageCode.TestState.Serialize, 
+            MessageCode.TestState.Deserialize, 
+            MessageCode.TestState.Process);
+
     }
 
 
-    public int RegisterMessageType(string messageName, MessagePeeker peeker, MessageSerializer serializer, MessageDeserializer deserializer, MessageProcessor processor) {
+    public int RegisterMessageType(string messageName, MessagePeeker peeker, MessagePriorityCalculator priority, MessageSerializer serializer, MessageDeserializer deserializer, MessageProcessor processor) {
         if(MessageCodes.Contains(messageName)) {
             Debug.LogException(new Exception("Can not register message type [" + messageName + "] because a message already exists with that name"));
         }
@@ -73,6 +99,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         MessageDeserializers.Add(deserializer);
         MessageProcessors.Add(processor);
         MessagePeekers.Add(peeker);
+        MessagePriorityCalculators.Add(priority);
 
         int msgId = MessageCodes.Count - 1;
         return msgId;
@@ -148,15 +175,39 @@ public class NetworkManager:SerializedMonoBehaviour {
                 //if it can, remove it from the queue and write it
                 //continue until writeStream can't fit any other messages
                 //or until the message queue is empty
-                
+
+                //we should loop through all the messages and calculate their priority.
+                //store this message list in a new list, and sort it by priority (or maybe just sort the queue, since we don't really need the original order?
+                for(int i = 0; i < sc.messageQueue.Count; i++) {
+                    NetworkMessage m = sc.messageQueue[i];
+                    if(MessagePriorityCalculators[m.msgCode] != null) {
+                        m.priority = MessagePriorityCalculators[m.msgCode](sc.steamID, m.args);
+                    } else {
+                        m.priority = 1f; //default priority for normal messages.  These will send *eventually* whenever there is space
+                    }
+                }
+
+                //sort it by priority, with higher priority values first, lower last.
+                sc.messageQueue = sc.messageQueue.OrderByDescending(p => p.priority + p.skipped).ToList();
+            
                 for(int i = 0; i < sc.messageQueue.Count; i++) {
                     //Debug.Log("queue count: " + sc.messageQueue.Count);
                     //Debug.Log("message: " + i);
+                    
                     NetworkMessage m = sc.messageQueue[i];
                     if(!writeStream.CanWrite()) {
+                        m.skipped++;
                         //Debug.Log("!writeStream.CanWrite()");
-                        break; //ZERO room left m
+                        continue; //continue because we need to mark the rest of the messages as skipped.
+                        //break; //ZERO room left m
                     } else {
+
+                        if(m.priority == 0f) { //if the message has a priority of 0 we dont want to send the message 
+                            sc.messageQueue.RemoveAt(i); //this will happen when we queue something to everyone, but 
+                            i--;                        //some players are too far away to care about the message (in a different map, etc)
+                            continue;                   //so it just gets discarded. 
+                        }
+
                         //get the total message size to check if it will fit
                         int msgSize = 8; //8 bits for the msgCode included before the data
                         if(MessagePeekers[m.msgCode] != null) { //if it's null we don't have any data to send, just the msgCode (like for a keep alive)
@@ -173,6 +224,7 @@ public class NetworkManager:SerializedMonoBehaviour {
                             sc.messageQueue.RemoveAt(i);
                             i--;
                         } else {
+                            m.skipped++;
                             //Debug.Log("trying next message, can't fit..");
                             continue; //try the next message I guess? until the packet is full or we run out
                         }
@@ -200,13 +252,14 @@ public class NetworkManager:SerializedMonoBehaviour {
         if(connections.ContainsKey(steamID)) {
             connections[steamID].timeSinceLastMsg = 0f;
         } //otherwise we just haven't established the connection yet (as this must be a connect request message)
-        //Debug.Log("SendP2PData: " + length);
+        Debug.Log("SendP2PData: " + length);
         return Client.Instance.Networking.SendP2PPacket(steamID, data, data.Length, sendType, channel);
     }
 
     //callback from SteamClient. Read the data and decide how to process it.
     public void ReceiveP2PData(ulong steamID, byte[] bytes, int length, int channel) {
         readStream = new UdpKit.UdpStream(bytes, length);
+        Debug.Log("rec message");
         //string s = stream.ReadString();
         while(readStream.CanRead() && readStream.CanRead(8)) {
             int msgCode = (int)SerializerUtils.ReadInt(readStream, 0, 255);
