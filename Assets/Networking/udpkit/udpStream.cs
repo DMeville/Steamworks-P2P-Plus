@@ -234,6 +234,8 @@ namespace UdpKit {
             if (UdpLog.IsEnabled(UdpLog.TRACE))
                 UdpLog.Trace("Writing uint ({0} bits)", bits);
 #endif
+
+            UnityEngine.Debug.Log(string.Format("Writing uint ({0} bits)", bits));
             byte
                 a = (byte)(value >> 0),
                 b = (byte)(value >> 8),
@@ -246,8 +248,8 @@ namespace UdpKit {
                     break;
 
                 case 2:
-                    InternalWriteByte(b, 8);
-                    InternalWriteByte(c, bits - 8);
+                    InternalWriteByte(a, 8);
+                    InternalWriteByte(b, bits - 8);
                     break;
 
                 case 3:
@@ -282,8 +284,8 @@ namespace UdpKit {
                     break;
 
                 case 2:
-                    b = InternalReadByte(8);
-                    c = InternalReadByte(bits - 8);
+                    a = InternalReadByte(8);
+                    b = InternalReadByte(bits - 8);
                     break;
 
                 case 3:

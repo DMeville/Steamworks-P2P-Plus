@@ -117,10 +117,14 @@ public class SteamClient:MonoBehaviour {
                 try {
                     UnityEngine.Profiling.Profiler.BeginSample("Send P2P");
 
-                    for(int i = 0; i < 50; i++) {
-                        Core.net.QueueMessage(steamid, Core.net.GetMessageCode("TestState"), UnityEngine.Random.Range(0, 255), 2, 3, 4.0f, 3.324f, 354.00034f);
-                    }
+                    //for(int i = 0; i < 50; i++) {
+                    //    Core.net.QueueMessage(steamid, Core.net.GetMessageCode("TestState"), UnityEngine.Random.Range(0, 255), 2, 3, 4.0f, 3.324f, 354.00034f);
+                    //}
 
+                    Core.net.SpawnPrefab(UnityEngine.Random.Range(0, 3));
+                    //Core.net.QueueMessage(Core.net.GetMessageCode("SpawnPrefab"), UnityEngine.Random.Range(0, 3), 100, 1, 1);
+                    //Core.net.QueueMessage(Core.net.GetMessageCode("SpawnPrefab"), UnityEngine.Random.Range(0, 3), 1, 1);
+                    
                     //Core.net.QueueMessage(steamid, 2, UnityEngine.Random.Range(0, 40));
                     //for(int i = 0; i < 10; i++) {
                     //    Core.net.SpawnPrefab(0);

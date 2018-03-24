@@ -14,15 +14,7 @@ public class Test : MonoBehaviour {
     public int numMessages = 10;
     void Start() {
 
-        //having issues reading P2P data.  It's slow.
-        //can we change to something other than the BitwiseMemoryOutputSTream?
-        //https://github.com/DMeville/udpkit/blob/master/src/managed/udpkit/udpStream.cs 
-        //could grab that out of udpkit from fholm
-        //or https://github.com/rafvall/UnityAssets/blob/master/BitTools/Src/BitTools/BitWriter.cs
 
-        //in order to use this we need to know the size of the packet we want to pack at creation
-        //we could add this.. but would that be optimal?
-        //
 
         byte[] b = new byte[1024 * 2]; //packetsize *2, why *2? That's what udpSocket.cs does. idk
 
@@ -31,13 +23,31 @@ public class Test : MonoBehaviour {
         UdpStream writeStream = new UdpStream(new byte[packetSize * 2]);
         UdpStream readStream = new UdpStream(new byte[packetSize * 2]);
 
-        writeStream.WriteBool(true);
-        writeStream.WriteBool(false);
-        writeStream.WriteBool(true);
-        writeStream.WriteBool(true);
+        int maxValue = 4095;
+        int value = 256;
+        //writeStream.WriteInt(value); //writes as 32 bit
+        //writeStream.WriteInt(value);
 
-        Debug.Log(BitTools.BitDisplay.BytesToString(writeStream.Data)); //this sends the entire packetSize of bytes, doesn't trim any of them off...
-        Debug.Log(writeStream.Length + " : " + writeStream.Ptr + " : " + writeStream.Position);
+
+
+        SerializerUtils.WriteInt(writeStream, 255, 0, 255);
+        SerializerUtils.WriteInt(writeStream, 256, 0, 256);
+
+        //SerializerUtils.WriteInt(writeStream, value,);
+
+        readStream = new UdpStream(writeStream.Data, writeStream.Position);
+        Debug.Log("0: " + SerializerUtils.ReadInt(readStream, 0, 255));
+        Debug.Log("1: " + SerializerUtils.ReadInt(readStream, 0, 256));
+        //Debug.Log("read: " + SerializerUtils.ReadInt(readStream));
+
+        //Debug.Log("255: " + BitTools.BitDisplay.BytesToString(writeStream.Data)); //this sends the entire packetSize of bytes, doesn't trim any of them off...
+        //Debug.Log("256: " + BitTools.BitDisplay.BytesToString(readStream.Data)); //this sends the entire packetSize of bytes, doesn't trim any of them off...
+
+       // Debug.Log(writeStream.Data.Length + " : " + writeStream.Ptr + " : " + writeStream.Position);
+
+        //Debug.Log("read: " + BitTools.BitDisplay.BytesToString(readStream.Data));
+        //Debug.Log(readStream.Data.Length + " : " + readStream.Ptr + " : " + readStream.Position);
+
         //we could arrayCopy it to the appropriate size and send that? idk
         //steam does this internally I 
     }

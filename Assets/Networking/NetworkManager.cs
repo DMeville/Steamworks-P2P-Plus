@@ -18,16 +18,16 @@ public class NetworkManager:SerializedMonoBehaviour {
     private float _networkSimulationTimer; //should happen on fixedUpdate at least
     public float keepAliveTimer = 10f; //seconds
 
-    public SteamConnection me;
-    public Dictionary<ulong, SteamConnection> connections = new Dictionary<ulong, SteamConnection>();
-    public int connectionCounter = 0;
-
     public int maxPlayers = 255; //connected at once. should be a power of 2 (-1). 2, 4, 8, 16, 32, 64, 128, 256.  etc.  Used for packing data, so leaving this at 255 when you only connect 4 players would be a huge waste.  don't  do that.
     public int maxPrefabs = 4095; //[0-maxPrefab] range for bitpacking.  The fewer prefabs we have, the better we can pack.  255 fits in 8 bits.  These are prefabs you can spawn over the network.
     public int maxNetworkIds = 4095; // sent over the net as (connectionNum) (networkId). since every client can spawn prefabs, this will ensure no overlap while not having to sync lists, or go through one player to ensure no overlap. 
     public int maxStates = 255; //separate state defintions.  Need to do lookups so we know how to read/write custom state data.
     private int networkIds = 0;
     public int packetSize = 1024 * 2; //(udpkit default, dunno)
+
+    public SteamConnection me;
+    public Dictionary<ulong, SteamConnection> connections = new Dictionary<ulong, SteamConnection>();
+    public int connectionCounter = 0;
 
     //per player, we clear between each queue.
     public ByteStream readStream = new ByteStream(new byte[1024 * 2]); //max packet size 1024 bytes? (not sure why x2, but that's how udpkit did it)
@@ -47,6 +47,12 @@ public class NetworkManager:SerializedMonoBehaviour {
     public delegate void MessageProcessor(ulong sender, params object[] args); //does whatever with the data. Update state, notify a manager, etc
     public delegate int MessagePeeker(params object[] args); //peeks into the message to find out how many bits we need to write it. Used for packing
 
+    //prefab stuff
+    public List<NetworkGameObject> registerPrefabsOnStart = new List<NetworkGameObject>();
+
+    public List<string> NetworkPrefabNames = new List<string>();
+    public List<NetworkGameObject> NetworkPrefabs = new List<NetworkGameObject>();
+
     //we need a priority system.  Every time a message in the queue is skipped we 
     //should we define a "Priority" Message delegate, that we can call to calculate the priority 
     //would need one for normal messages, and one for state replicate/entity events?
@@ -54,6 +60,8 @@ public class NetworkManager:SerializedMonoBehaviour {
     //or maybe they can be replaced/updated or something with the "latest" data
 
     void Awake() {
+
+        Debug.Log("IsLittleEndian: " + BitConverter.IsLittleEndian);
         DontDestroyOnLoad(this.gameObject);
         instance = this;
         Core.net = this;
@@ -66,27 +74,37 @@ public class NetworkManager:SerializedMonoBehaviour {
         writeStream = new ByteStream(new byte[packetSize]);
 
         RegisterMessageType("Empty", null, null, null, null, null); //added to the end of the packet so we don't read to the end if we don't have to.
-        RegisterMessageType("ConnectRequest", 
-            null, 
-            null, 
-            null, 
-            null, 
+        RegisterMessageType("ConnectRequest",
+            null,
+            null,
+            null,
+            null,
             MessageCode.ConnectRequest.Process);
 
-        RegisterMessageType("ConnectRequestResponse", 
-            MessageCode.ConnectRequestResponse.Peek, 
+        RegisterMessageType("ConnectRequestResponse",
+            MessageCode.ConnectRequestResponse.Peek,
             null,  //doesn't need a priority because this can not be queued, because it's sent before the connection is established
-            MessageCode.ConnectRequestResponse.Serialize, 
-            MessageCode.ConnectRequestResponse.Deserialize, 
+            MessageCode.ConnectRequestResponse.Serialize,
+            MessageCode.ConnectRequestResponse.Deserialize,
             MessageCode.ConnectRequestResponse.Process);
 
-        RegisterMessageType("TestState", 
-            MessageCode.TestState.Peek, 
-            MessageCode.TestState.Priority, 
-            MessageCode.TestState.Serialize, 
-            MessageCode.TestState.Deserialize, 
+        RegisterMessageType("TestState",
+            MessageCode.TestState.Peek,
+            MessageCode.TestState.Priority,
+            MessageCode.TestState.Serialize,
+            MessageCode.TestState.Deserialize,
             MessageCode.TestState.Process);
 
+        RegisterMessageType("SpawnPrefab",
+            MessageCode.SpawnPrefab.Peek,
+            MessageCode.SpawnPrefab.Priority,
+            MessageCode.SpawnPrefab.Serialize,
+            MessageCode.SpawnPrefab.Deserialize,
+            MessageCode.SpawnPrefab.Process);
+
+        for(int i = 0; i < registerPrefabsOnStart.Count; i++) {
+            RegisterPrefab(registerPrefabsOnStart[i].gameObject.name, registerPrefabsOnStart[i]);
+        }
     }
 
 
@@ -135,6 +153,19 @@ public class NetworkManager:SerializedMonoBehaviour {
         QueueMessage(sendTo, iMsgCode, args);
     }
 
+    //queues the message to every connected client (not including yourself)
+    public void QueueMessage(string msgCode, params object[] args) {
+        QueueMessage(GetMessageCode(msgCode), args);
+
+    }
+
+    //queues the message to every connected client (not including yourself)
+    public void QueueMessage(int msgCode, params object[] args) {
+        foreach(SteamConnection s in connections.Values) {
+            QueueMessage(s.steamID, msgCode, args);
+        }
+    }
+
     public void QueueMessage(ulong sendTo, int msgCode, params object[] args) {
         //Debug.Log("[SEND] " + MessageCodes[msgCode]);
         //int dataSize = 0;
@@ -155,6 +186,91 @@ public class NetworkManager:SerializedMonoBehaviour {
             return null;
         }
     }
+
+    //prefab stuff
+    public int RegisterPrefab(string prefabName, NetworkGameObject prefab) {
+        if(NetworkPrefabs.Count + 1 > maxPrefabs) {
+            Debug.LogException(new Exception("Can not register prefab [" + prefabName + "] - Prefab limit has been reached"));
+        }
+        if(NetworkPrefabNames.Contains(prefabName)) {
+            Debug.LogException(new Exception("Can not register prefab [" + prefabName + "] because a prefab already exists with that name"));
+        }
+        NetworkPrefabs.Add(prefab);
+        NetworkPrefabNames.Add(prefabName);
+        int prefabId = NetworkPrefabs.Count - 1;
+        Debug.Log("Registered Prefab: " + prefabName + " - id: " + prefabId);
+        return prefabId;
+    }
+
+    public GameObject GetPrefab(int prefabId) {
+        if(NetworkPrefabs.WithinRange(prefabId)) {
+            return NetworkPrefabs[prefabId].gameObject;
+        } else {
+            Debug.LogError("Prefab id [" + prefabId + "] is outside the range of [0, " + maxPrefabs + "]");
+            return null;
+        }
+    }
+
+    public GameObject GetPrefab(string prefabName) {
+        if(NetworkPrefabNames.Contains(prefabName)) {
+            return GetPrefab(NetworkPrefabNames.IndexOf(prefabName));
+        } else {
+            Debug.LogError("Prefab with name [" + prefabName + "] does not exist in the prefab database");
+            return null;
+        }
+    }
+
+    public int GetNextNetworkId() {
+        return networkIds++;
+    }
+    public GameObject SpawnPrefab(int prefabId) {
+
+        //we create the object on our client 
+        //we set the intial data
+        //and we send the spawn message
+
+        int networkId = GetNextNetworkId();
+        int owner = me.connectionIndex;
+        int controller = me.connectionIndex;
+        Debug.Log("SpawnPrefab");
+
+        GameObject g = SpawnPrefabInternal(prefabId, networkId, owner, controller);
+
+        QueueMessage(GetMessageCode("SpawnPrefab"), prefabId, networkId, owner, controller);
+
+        //spawn prefab internal
+
+        return g;
+    }
+
+    public GameObject SpawnPrefabInternal(int prefabId, int networkId, int owner, int controller) {
+        Debug.Log("SpawnPrefabInternal : " + prefabId + " :" + networkId + " : " + owner + " : " + controller);
+        GameObject prefab = GetPrefab(prefabId);
+        NetworkGameObject ngo = null;
+
+        if(prefab != null) {
+            GameObject g = GameObject.Instantiate(prefab);
+            ngo = g.GetComponent<NetworkGameObject>();
+            ngo.prefabId = prefabId;
+            ngo.networkId = networkId;
+            ngo.owner = owner;
+            ngo.controller = controller;
+            ngo.OnSpawn();
+        }
+
+        //add it to the owners entity list
+        if(ngo != null) {
+            if(me.connectionIndex == owner) {
+                me.entities[networkId] = ngo;
+            } else {
+                SteamConnection c = connections.Values.Where(s => s.connectionIndex == owner).First();
+                c.entities[networkId] = ngo;
+            }
+        }
+
+        return ngo.gameObject;
+    }
+
 
     /// <summary>
     /// walks through the message queue and packs the messages together and sends them off.

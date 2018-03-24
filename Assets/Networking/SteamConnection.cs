@@ -31,9 +31,9 @@ public class SteamConnection {
     }
 
     public void RecEntityUpdate(int owner, int networkId, int stateType, params object[] args) {
-        if(entities[networkId] != null) {
-            entities[networkId].OnStateUpdateReceived(owner, networkId, stateType, args);
-        }
+        //if(entities[networkId] != null) {
+        //    entities[networkId].OnStateUpdateReceived(owner, networkId, stateType, args);
+        //}
     }
     
     //Returns true if you have higher auth than c, this means you're responisible for sending data to them

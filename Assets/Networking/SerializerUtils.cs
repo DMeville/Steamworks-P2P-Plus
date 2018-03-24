@@ -37,8 +37,8 @@ public static class SerializerUtils  {
         //shift min and max into range starting at 0
         //so (1,5) -> (0,4). (-2, 2) -> (0,4)
 
-        uint c = (uint)(maxValue - maxValue);
-        uint d = (uint)(maxValue - minValue);
+        //uint c = (uint)(maxValue - maxValue);
+        //uint d = (uint)(maxValue - minValue);
 
         uint delta = (uint)(maxValue - minValue);
 
@@ -66,7 +66,7 @@ public static class SerializerUtils  {
     //then we reverse it on the other side
     public static void WriteInt(UdpKit.UdpStream stream, int value, int minValue = int.MinValue, int maxValue = int.MaxValue) {
         int reqBit = (int)RequiredBits(minValue, maxValue);
-
+        //Debug.Log("WriteInt: " + value + " : requiredBits : " + reqBit);
         if(value < minValue || value > maxValue) {
             Debug.Log($"Value [{value}] is outside of range [{minValue}, {maxValue}] and will be clamped");
         }
@@ -80,6 +80,7 @@ public static class SerializerUtils  {
 
     public static int ReadInt(UdpKit.UdpStream stream, int minValue = int.MinValue, int maxValue = int.MaxValue) {
         int reqBit = (int)RequiredBits(minValue, maxValue);
+        //Debug.Log("ReadInt: required bits:" + reqBit);
         return stream.ReadInt(reqBit) + minValue;
     }
 
