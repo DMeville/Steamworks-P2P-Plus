@@ -14,6 +14,16 @@ namespace MessageCode {
         public static float Priority(ulong receiver, params object[] args) {
             return 999f;
         }
+
+        //returns the header size for (prefabId, networkId, controller, owner)
+        public static int PeekEntityHeader() {
+            int s = 0;
+            s += SerializerUtils.RequiredBitsInt(0, Core.net.maxPrefabs);
+            s += SerializerUtils.RequiredBitsInt(0, Core.net.maxNetworkIds);
+            s += SerializerUtils.RequiredBitsInt(0, Core.net.maxPlayers);
+            s += SerializerUtils.RequiredBitsInt(0, Core.net.maxPlayers);
+            return s;
+        }
     }
 
     //copy and paste this template when creating a new message.
@@ -145,10 +155,11 @@ namespace MessageCode {
         }
     }
 
-    public class SpawnPrefab {
+    //this is used for spawn too, because we spawn an object when we get the first state update from them
+    public class StateUpdate {
 
         public static void Process(ulong sender, params object[] args) {
-            Debug.Log("Process: " + args[0] + " : " + args[1] + " : " + args[2] + " : " + args[3]);
+            //Debug.Log("Process: " + args[0] + " : " + args[1] + " : " + args[2] + " : " + args[3]);
             int prefabId = (int)args[0];
             int networkId = (int)args[1];
             int owner = (int)args[2];
@@ -160,7 +171,7 @@ namespace MessageCode {
         //
         public static void Serialize(ulong receiver, ByteStream stream, params object[] args) {
             //Debug.Log("Serialize: " + args[0] + " : " + args[1] + " : " + args[2] + " : " + args[3]);
-            Debug.Log("Serialize: " + args[0]);
+            //Debug.Log("Serialize: " + args[0]);
             int prefabId = (int)args[0];
             int networkId = (int)args[1];
             int owner = (int)args[2];
@@ -178,28 +189,40 @@ namespace MessageCode {
 
         public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
             //Debug.Log(BitTools.BitDisplay.BytesToString(stream.Data));
-            //values with compression larger than 8 bits fails for reason.
-            //255 works, 256 doesnt.
 
+            //Debug.Log("MessageCode.StateUpdate.Deserialize");
+            //read the entity header
             int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
             int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
             int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
             int controller = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
 
-            Debug.Log("Deserialize: " + prefabId + " : " + networkId + " : " + owner + " : " + controller);
+            //pass it down to the Behaviour to process further
+            Core.net.GetPrefabNetworkGameObject(prefabId).Deserialize(stream, prefabId, networkId, owner, controller);
+            //what happens if we get here and we CAN"T find the entity? It's already been destroyed locally?
+            //we won't know the state, and we won't know how much data to read.
+            //and we can't just throw away the packet.. because it might have important data AFTER this message
+            //so we need a way to know the message size even if the entity doesn't exisit.
 
-            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);
+            //we could send the message size but that's another 8 bits at least.. and that would kind of be a waste.
+            //hmmmmm
+            //cause use the prefabs template peek because it could have a different size (delta compressed)
+            //HMMMMM
+
+            //can we use a static deserialize (on the prefab template)
+            //that will read anything conditional? I guess
+
+            //Debug.Log("Deserialize: " + prefabId + " : " + networkId + " : " + owner + " : " + controller);
+
+            //process is called the next level down (prefab's behaviour's deserialize)
+            //Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);
 
         }
 
         public static int Peek(params object[] args) {
             int s = 0;
 
-            s += SerializerUtils.RequiredBitsInt(0, Core.net.maxPrefabs);
-            s += SerializerUtils.RequiredBitsInt(0, Core.net.maxNetworkIds);
-            s += SerializerUtils.RequiredBitsInt(0, Core.net.maxPlayers);
-            s += SerializerUtils.RequiredBitsInt(0, Core.net.maxPlayers);
-
+            s += MessageCode.Internal.PeekEntityHeader();
             //s += Core.net.StatePeekers[prefabId] for initial data
 
             return s;

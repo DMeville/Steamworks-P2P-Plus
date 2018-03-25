@@ -15,6 +15,8 @@ public class NetworkMessage {
     //that we have a new state update we want to send?  That way we send only 
     //the most recent state, and not the older one first (as we don't need the older one if we have a newer one..)
     //?
+    public bool isEntityMsg = false; //need this.  Can't just use the entity not being null to mean it's an entity event, because what happens 
+    public NetworkGameObject entity = null; //if we have a queued message then the entity is destroyed. It would lose it's ref and think it's a global event! Can't have that!
 
     public NetworkMessage(int msgCode, params object[] args) {
         this.msgCode = msgCode;

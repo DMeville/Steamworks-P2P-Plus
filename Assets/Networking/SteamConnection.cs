@@ -29,12 +29,6 @@ public class SteamConnection {
         int max = Core.net.maxNetworkIds;
         entities = new NetworkGameObject[max];
     }
-
-    public void RecEntityUpdate(int owner, int networkId, int stateType, params object[] args) {
-        //if(entities[networkId] != null) {
-        //    entities[networkId].OnStateUpdateReceived(owner, networkId, stateType, args);
-        //}
-    }
     
     //Returns true if you have higher auth than c, this means you're responisible for sending data to them
     //like state data or keep alives or whatever

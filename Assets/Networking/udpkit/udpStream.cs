@@ -235,7 +235,7 @@ namespace UdpKit {
                 UdpLog.Trace("Writing uint ({0} bits)", bits);
 #endif
 
-            UnityEngine.Debug.Log(string.Format("Writing uint ({0} bits)", bits));
+            //UnityEngine.Debug.Log(string.Format("Writing uint ({0} bits)", bits));
             byte
                 a = (byte)(value >> 0),
                 b = (byte)(value >> 8),

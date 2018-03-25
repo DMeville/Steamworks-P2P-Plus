@@ -123,16 +123,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c69793aaafda7ff44b8350685e297d9a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  networkId: 0
   prefabId: 0
+  networkId: 0
   owner: 0
   controller: 0
   stateType: 0
-  updateRate: 0.3
-  radius: 1
-  orbitSpeed: 90
-  deg: 0
-  targetPosition: {x: 0, y: 0, z: 0}
-  lerpSpeed: 10
-  toggleColor: 0
-  toggleTimer: 5
+  updateRate: 0.02
+  _updateRate: 0

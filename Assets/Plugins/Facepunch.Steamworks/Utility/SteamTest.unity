@@ -818,6 +818,10 @@ MonoBehaviour:
   maxNetworkIds: 4095
   maxStates: 255
   packetSize: 2048
+  registerPrefabsOnStart:
+  - {fileID: 114941469891307962, guid: edf9792a63f04d8488aa0f076aefde35, type: 2}
+  - {fileID: 114941469891307962, guid: ec556ed862b5125439999788ca65f2b0, type: 2}
+  - {fileID: 114941469891307962, guid: 9548357360879ae479f711ab6bc87e4d, type: 2}
   me:
     steamID: 0
     connectionIndex: 0
@@ -828,10 +832,6 @@ MonoBehaviour:
     entities: []
   connectionCounter: 0
   MessageCodes: []
-  registerPrefabsOnStart:
-  - {fileID: 114941469891307962, guid: edf9792a63f04d8488aa0f076aefde35, type: 2}
-  - {fileID: 114941469891307962, guid: ec556ed862b5125439999788ca65f2b0, type: 2}
-  - {fileID: 114941469891307962, guid: 9548357360879ae479f711ab6bc87e4d, type: 2}
   NetworkPrefabNames: []
   NetworkPrefabs: []
 --- !u!114 &862127749

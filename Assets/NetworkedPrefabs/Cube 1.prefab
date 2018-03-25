@@ -128,3 +128,5 @@ MonoBehaviour:
   owner: 0
   controller: 0
   stateType: 0
+  updateRate: 0.02
+  _updateRate: 0
