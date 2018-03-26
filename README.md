@@ -61,7 +61,7 @@ public static void TestMessageSerialize(ulong receiver, ByteStream stream, param
     SerializerUtils.WriteBool(stream, myBool)
     SerializerUtils.WriteInt(stream, myInt, 0, 32);
     SerializerUtils.WriteFloat(stream, myFloat1, 0f, 2000f, 0.1f);
-    SerializerUtils.WriteInt(stream, myFloat2, -255f, 255f, 0.001f);
+    SerializerUtils.WriteFloat(stream, myFloat2, -255f, 255f, 0.001f);
 }
 
 public static void TestMessageDeserialize(ulong sender, int msgCode, ByteStream stream) {
