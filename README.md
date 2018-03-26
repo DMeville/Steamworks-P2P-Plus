@@ -26,7 +26,7 @@ RegisterMessageType("TestMessage",
             TestMessageProcess); //processes the message, do something with the deserialized data
 ````
 
-Define the message methods for our new message type "PlayerData"
+Define the message methods for our new message type "TestMessage"
 For this example, we will send one bool, one int, and two floats (in different ranges) with our message
 ```
 //Peek looks into our message to find out how many bits this message needs.
@@ -96,6 +96,26 @@ float myFloat2 = -34.324f;
 Core.net.QueueMessage(targetSteamId, "TestMessage", myBool, myInt, myFloat1, myFloat2);
 Core.net.QueueMessage(targetSteamId, "TestMessage", false, 5, 0.34f, -3.241f);
 ```
+
+# Networked Game Object
+See Assets/Networking/CubeBehaviour.cs for a full example.
+
+Define your prefab type and signature somewhere. Ideally all in the same class. These types are turned into ints and sent over the wire, so it's crucial every connected client has the same message type ordering.
+
+```
+Core.net.RegisterPrefab("MyPrefab", myPrefab);
+```
+Extend NetworkGameObject and override Peek, Priority, Serialize, and Deserialize. Attach this "Behaviour" to your prefab the same way we did for a message above.  
+
+Then to spawn the prefab:
+
+```
+Core.net.SpawnPrefab(Core.net.GetPrefabId("MyPrefab"));
+
+```
+
+Internally this just sends a state update, but since the receiver doesn't have the prefab spawned yet it does so and applies the state data.
+
 
 ### Dependencies
 - [Facepunch.Steamworks](https://github.com/Facepunch/Facepunch.Steamworks) for as a steamworks wrapper, included and required. 
