@@ -6,78 +6,98 @@ I wanted something slightly higher level than using the SendP2PPacket method in 
 
 All the good stuff is in NetworkManager.cs, methods called via Core.net or NetworkManager.instance
 
-## Usage
+## Features
+- Connection-based!
+- Extendable Messaging System. Easily define custom message types and send them to connected clients. (mod friendly!)
+- Networked Game Objects with state replication.
+- Bitpacked messages and Type Compression. Send a bool as 1 bit instead of 8, an int in the range of [0,10] as 4 bits instead of 16!
+- Priority Sorting of messages. Players closer to you will receive messages more often than players on the other side of the map.
+- Use a server-client model, a fully connected p2p graph, or something else entirely! Easy to extend!
 
+## Usage
+# Messaging System
 Define your message type and signature somewhere. Ideally all in the same class. These message types are turned into ints and sent over the wire, so it's crucial every connected client has the same message type ordering.
 ```
-Core.net.RegisterMessageType("PlayerData", SerializePlayerData, DeserializePlayerdata, OnRecPlayerData);
+RegisterMessageType("TestMessage",
+            TestMessagePeek, //peeks into the message to find out how many bits we want to send (to see if it will fit in the next packet)
+            TestMessagePriority, //calculates the priority of the message, 0 = doesn't get sent, higher values get sent sooner.
+            TestMessageSerialize, //serializes the message data to the bitstream
+            TestMessageDeserialize, //deserialized the message data from the bitstream
+            TestMessageProcess); //processes the message, do something with the deserialized data
 ````
 
-Define the Serialize, Deserialize, and Process methods for our new message type "PlayerData"
+Define the message methods for our new message type "PlayerData"
+For this example, we will send one bool, one int, and two floats (in different ranges) with our message
 ```
-private void byte[] SerializePlayerData(int msgCode, params object[] args){    
-    //we need to know what data we want to send with this message type
-    string playerName = arg[0];
-    int playerId =      arg[1];
-    int hp =            arg[2];
-    int str =           arg[3];
-    bool isCool =       arg[4];
-    float magicNumber = arg[5];
-    
-    OutputStream stream = new OutputStream(); //Using OutputStream = BitwiseMemoryOutputStream;
-    
-    //Note: We must write these in the serialize method and read these in the deserialize method in the SAME order
-    //along with the same ranges
-    
-    stream.WriteString(playerName);
-    stream.WriteInt(playerId, 0, 255); //sends an int in the range of [0,255]. Packs it as 8 bits instead of 32.
-    stream.WriteInt(hp);               //sends as a full 32 bit int
-    stream.WriteInt(str);
-    stream.WriteBool(isCool);          //sends one bit, instead of 8
-    stream.WriteFloat(magicNumber, 0f, 1f, 0.1f) //min, max, precision.  would send in 4 bits instead of 32
-    
-    return stream.GetBuffer();
+//Peek looks into our message to find out how many bits this message needs.
+//Since we know what data we want to send, we know how to figure this out.
+public static int TestMessagePeek(params object[] args) {
+    int s = 0;
+    //our first piece of data is a bool
+    s += SerializerUtils.RequiredBitsBool();
+    //compress the int into [0,32] range to save bits, because our int we know will never be larger than 32!
+    s += SerializerUtils.RequiredBitsInt(0, 32); 
+    //compress our float in the [0, 2000] range, with a precision of 0.1 (0.0, 0.1, 0.2 .. 1999.8, 1999.9, 2000.0)
+    s += SerializerUtils.RequiredBitsFloat(0f, 2000f, 0.1f);
+    s += SerializerUtils.RequiredBitsFloat(-255f, 255f, 0.0001f);
+    return s;
 }
 
-private void DeserializePlayerData(ulong sender, int msgCode, byte[] data){
-    InputStream stream = new InputStream(data);  //Using InputStream = BitwiseMemoryInputStream;
-    string playerName  = stream.ReadString(data);
-    int playerId       = stream.ReadInt(0,255);
-    int hp             = stream.ReadInt();
-    int str            = stream.ReadInt();
-    bool isCool        = stream.ReadBool();
-    float magicNumber  = stream.ReadFloat(0f, 1f, 0.1f);
-    
-    Core.net.Process(sender, msgCode, playerName, playerId, hp, str, isCool, magicNumber);
+public static float TestMessagePriority(ulong receiver, params object[] args) {
+    return 1f; //default
+    //we could do something like return DistanceBetween(GetPlayer(me), GetPlayer(receiver));
+    //so that if receiver is far away we don't rush in sending him this message, he will get it eventually
+    //but if someone is close to you, we send it to them sooner
 }
 
-private void OnRecPlayerData(ulong sender, int msgCode, params object[] args){
-    string playerName = arg[0];
-    int playerId      = arg[1];
-    int hp            = arg[2];
-    int str           = arg[3];
-    bool isCool       = arg[4];
-    float magicNumber = arg[5];
-    
-    //do whatever you want with this data now
-    //Players.GetPlayer(playerId).SetStats(hp, str, isCool, magicNumber);
-    //Players.GetPlayer(playerId).SetName(playerName);
+public static void TestMessageSerialize(ulong receiver, ByteStream stream, params object[] args) {
+
+    bool myBool = (bool)args[0];
+    int myInt = (int)args[1];
+    float myFloat1 = (float)args[2];
+    float myFloat2 = (float)args[3];
+
+    //NOTE: We MUST Read these values in Deserialize in the SAME order we write them here.  We must use the same ranges too!
+    SerializerUtils.WriteBool(stream, myBool)
+    SerializerUtils.WriteInt(stream, myInt, 0, 32);
+    SerializerUtils.WriteFloat(stream, myFloat1, 0f, 2000f, 0.1f);
+    SerializerUtils.WriteInt(stream, myFloat2, -255f, 255f, 0.001f);
 }
+
+public static void TestMessageDeserialize(ulong sender, int msgCode, ByteStream stream) {
+    bool myBool = SerializerUtils.ReadBool(stream);
+    int myInt = SerializerUtils.ReadInt(stream, 0, 32);
+    float myFloat1 = SerializerUtils.ReadFloat(stream, 0f, 2000f, 0.1f);
+    float myFloat2 = SerializerUtils.ReadFloat(stream, -255f, 255f, 0.001f);
+    
+    //Now that we've got our data, we pass it along to the processor!
+    Core.net.MessageProcessors[msgCode](sender, myBool, myInt, myFloat1, myFloat2);
+}
+public static void TestMessageProcess(ulong sender, params object[] args) {
+    bool myBool = (bool)arg[0];
+    int myInt = (int)arg[1];
+    float myFloat1 = (float)arg[2];
+    float myFloat2 = (float)arg[3];
+    
+    //do whatever you want with this data now.
+    //Player.GetPlayer(me).SetDead(myBool);
+    //Players.GetPlayer(me).SetStats(myInt, myFloat1, myFloat2);
+}
+
 ```
 
 Then send the message:
 ```
-string playerName = "Tayne"
-int playerId = 3;
-int hp = 120;
-int str = 9001;
-bool isCool = false;
+bool myBool = true;
+int myInt = 14;
+float myFloat1 = 249.142f; //Since we send this in the range [0f, 2000f] with precision of 0.1f, this sends as 249.1f
+float myFloat2 = -34.324f;
 
-Core.net.QueueMessage(targetSteamId, "PlayerData", playerName, playerId, hp, str, isCool);
-Core.net.QueueMessage(targetSteamId, "PlayerData", "Benjals", 4, 11, 0, true);
+Core.net.QueueMessage(targetSteamId, "TestMessage", myBool, myInt, myFloat1, myFloat2);
+Core.net.QueueMessage(targetSteamId, "TestMessage", false, 5, 0.34f, -3.241f);
 ```
 
 ### Dependencies
 - [Facepunch.Steamworks](https://github.com/Facepunch/Facepunch.Steamworks) for as a steamworks wrapper, included and required. 
-- [Unity-UdpSocket-Bitstream-Utilities BitStream](https://github.com/M-Aghasi/Unity-UdpSocket-BitStream-Utilities) classes to pack data, included and required. 
+- [UdpKit](https://github.com/DMeville/udpkit) Modified version, using Udpstream to bitpack data, included and required. 
 - [Odin Inspector](https://assetstore.unity.com/packages/tools/utilities/odin-inspector-and-serializer-89041) to show dictionaries in the editor, not included but not required.
