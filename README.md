@@ -15,14 +15,14 @@ All the good stuff is in NetworkManager.cs, methods called via Core.net or Netwo
 - Use a server-client model, a fully connected p2p graph, or something else entirely! Easy to extend!
 
 ## Usage
-# Messaging System
+### Messaging System
 Define your message type and signature somewhere. Ideally all in the same class. These message types are turned into ints and sent over the wire, so it's crucial every connected client has the same message type ordering.
 ```
 RegisterMessageType("TestMessage",
             TestMessagePeek, //peeks into the message to find out how many bits we want to send (to see if it will fit in the next packet)
             TestMessagePriority, //calculates the priority of the message, 0 = doesn't get sent, higher values get sent sooner.
             TestMessageSerialize, //serializes the message data to the bitstream
-            TestMessageDeserialize, //deserialized the message data from the bitstream
+            TestMessageDeserialize, //deserializes the message data from the bitstream
             TestMessageProcess); //processes the message, do something with the deserialized data
 ````
 
