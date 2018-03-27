@@ -629,6 +629,7 @@ namespace UdpKit {
             }
 
             Ptr += bits;
+            //UnityEngine.Debug.Log(BitTools.BitDisplay.ByteToString(value));
             return value;
         }
 

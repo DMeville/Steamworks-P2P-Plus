@@ -16,6 +16,7 @@ public abstract class NetworkGameObject:MonoBehaviour {
 
     public float interpolationBufferTime = 100;//ms.
     public List<PositionSnapshot> positionSnapshots = new List<PositionSnapshot>();
+    public List<RotationSnapshot> rotationSnapshots = new List<RotationSnapshot>();
 
     //hold the packet for this time then pop it to our targetPos;
     //needs interpolation buffer, whatever that means.
@@ -86,12 +87,12 @@ public abstract class NetworkGameObject:MonoBehaviour {
         return Core.net.me.connectionIndex == controller;
     }
 
-    public void StorePositionSnapshot(float time, float x, float y, float z) {
+    public void StorePositionSnapshot(float x, float y, float z) {
         while(positionSnapshots.Count > 10) {
             positionSnapshots.RemoveAt(0); //only ever store 10
         }
 
-        positionSnapshots.Add(new PositionSnapshot() { timeRec = time, pos = new Vector3(x, y, z) });
+        positionSnapshots.Add(new PositionSnapshot() { timeRec = Time.realtimeSinceStartup, pos = new Vector3(x, y, z) });
     }
 
     public Vector3 GetInterpolatedPosition() {
@@ -133,6 +134,54 @@ public abstract class NetworkGameObject:MonoBehaviour {
             return new Vector3(0, 0, 0);
         }
     }
+
+    public void StoreRotationSnapshot(Quaternion rotation) {
+        while(rotationSnapshots.Count > 10) {
+            rotationSnapshots.RemoveAt(0); //only ever store 10
+        }
+
+        rotationSnapshots.Add(new RotationSnapshot() { timeRec = Time.realtimeSinceStartup, rot = rotation });
+    }
+
+    public Quaternion GetInterpolatedRotation() {
+        float renderTime = Time.realtimeSinceStartup - (interpolationBufferTime / 1000f); //1/1000 to convert ms to s
+                                                                                          //do we have at least two snapshots to interp between?
+        if(rotationSnapshots.Count == 0) {
+            //hmmmmmmmmmm.  When we get our spawn, we should have at least one position stored.
+            //this should never happen, unless we are trying to interpolate a state that doesn't have a transform, which you can't do
+            return new Quaternion(0f, 0f, 0f, 1f);
+        } else if(rotationSnapshots.Count == 1) {
+            //can't interp, just snap to our most recent time
+            return rotationSnapshots[0].rot;
+        } else {
+            //we can interp so long as we have one interp position on either side of 
+            //we need one interp with time < renderTime, and one with time > renderTime,
+            //so find where time > renderTime changes from true to false
+            bool foundTransition = false;
+            int left = 0;
+            int right = 0;
+            for(int i = rotationSnapshots.Count - 2; i >= 0; i--) { //start at the end (-1 because we need i and i++), because the switch should lbe closer here
+                if(!rotationSnapshots.WithinRange(i + 1)) continue;
+                if(renderTime > rotationSnapshots[i].timeRec && renderTime < rotationSnapshots[i + 1].timeRec) {
+                    foundTransition = true;
+                    left = i;
+                    right = i + 1;
+                    break;
+                }
+            }
+
+            if(foundTransition) {
+                float lerpTime = Mathf.InverseLerp(rotationSnapshots[left].timeRec, rotationSnapshots[right].timeRec, renderTime);
+                return Quaternion.Slerp(rotationSnapshots[left].rot, rotationSnapshots[right].rot, lerpTime);
+            } else {
+                //this could happen if every snapshot position is < renderTime,
+                //so we should just set it to the oldest entry
+                return rotationSnapshots[rotationSnapshots.Count - 1].rot;
+            }
+
+            return new Quaternion(0f, 0f, 0f, 1f);
+        }
+    }
 }
 
 [System.Serializable]
@@ -140,7 +189,11 @@ public class PositionSnapshot {
     public float timeRec = 0f;
     public Vector3 pos;
 }
+[System.Serializable]
+public class RotationSnapshot {
+    public float timeRec = 0f;
+    public Quaternion rot;
+}
 
-  
-    
+
 

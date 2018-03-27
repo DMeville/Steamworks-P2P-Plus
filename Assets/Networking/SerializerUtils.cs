@@ -6,7 +6,7 @@ using UnityEngine;
 using System.Linq;
 
 
-public static class SerializerUtils  {
+public static class SerializerUtils {
 
     public static string ToStringBinary(this byte[] a, bool pad = true) {
         string s = "";
@@ -101,7 +101,7 @@ public static class SerializerUtils  {
     }
 
     public static int RequiredBitsFloat(float minValue = float.MinValue, float maxValue = float.MaxValue, float precision = 0.0000001f) {
-        int intMax = (int)((maxValue - minValue + precision) * (1f / precision)); 
+        int intMax = (int)((maxValue - minValue + precision) * (1f / precision));
         return (int)RequiredBitsInt(0, intMax);
     }
 
@@ -126,7 +126,7 @@ public static class SerializerUtils  {
             Debug.Log($"Value [{value}] is outside of range [{minValue}, {maxValue}] and will be clamped");
         }
         value = Mathf.Clamp(value, minValue, maxValue);
-
+        //float oneOverPrecision = (1f / precision); would this be faster? probably not even worth it idk
         int intMax = (int)((maxValue - minValue + precision) * (1f / precision)); //10
         //Debug.Log("intMax: " + intMax);
         //don't round, just remove values past precision
@@ -154,8 +154,108 @@ public static class SerializerUtils  {
         int intVal = ReadInt(stream, 0, intMax);
         float value = (intVal * precision) + minValue;
         //need to clean it up because sometimes we're getting 1.000001 with 0.1 prec, so fix that
-        value = Mathf.Round((value) * (1f / precision))*precision;
+        value = Mathf.Round((value) * (1f / precision)) * precision;
         return value;
     }
     //don't need a custom range for bools, because they are always one bit
+
+    //uses smallest three compression in the range of [-10, 10] by default. 
+    //can't change the range as a quaterion is always [-1, 1] technically, but we can change the precision.
+    public static void WriteQuaterinion(UdpKit.UdpStream stream, Quaternion rotation, float precision = 0.0000001f) {
+
+        //find the index with the largest abs value
+        int largestIndex = 0;
+        float v = rotation[0];
+        for(int i = 1; i < 4; i++) {
+            if(Mathf.Abs(rotation[i]) > v) {
+                v = rotation[i];
+                largestIndex = i;
+            }
+        }
+
+        //Debug.Log("largest index write: " + largestIndex + " v: " + v);
+        WriteInt(stream, largestIndex, 0, 3);
+        float sign = (rotation[largestIndex] < 0) ? -1 : 1;
+        //if(Mathf.Approximately(rotation[largestIndex], 1f)) {
+        //    //write one bit as true
+        //    //because we know if any component is 1, everything else is 0 so don't bother even sending.
+        //    //in *most* cases this is an extra bit as this isn't true often I imagine, so maybe it's not worth it
+        //    //to save one bit infrequently, while having to send one bit more often.
+        //} else {
+        //    //write one bit as false
+        //}
+        
+        switch(largestIndex) {
+            case 0:
+                WriteFloat(stream, rotation[1] * sign, -1f, 1f, precision);
+                WriteFloat(stream, rotation[2] * sign, -1f, 1f, precision);
+                WriteFloat(stream, rotation[3] * sign, -1f, 1f, precision);
+                break;
+
+            case 1:
+                WriteFloat(stream, rotation[0] * sign, -1f, 1f, precision);
+                WriteFloat(stream, rotation[2] * sign, -1f, 1f, precision);
+                WriteFloat(stream, rotation[3] * sign, -1f, 1f, precision);
+                break;
+
+            case 2:
+                WriteFloat(stream, rotation[0] * sign, -1f, 1f, precision);
+                WriteFloat(stream, rotation[1] * sign, -1f, 1f, precision);
+                WriteFloat(stream, rotation[3] * sign, -1f, 1f, precision);
+                break;
+
+            case 3:
+                WriteFloat(stream, rotation[0] * sign, -1f, 1f, precision);
+                WriteFloat(stream, rotation[1] * sign, -1f, 1f, precision);
+                WriteFloat(stream, rotation[2] * sign, -1f, 1f, precision);
+                break;
+        }
+    }
+
+    public static Quaternion ReadQuaternion(UdpKit.UdpStream stream, float precision = 0.0000001f) {
+        float x = 0f;
+        float y = 0f;
+        float z = 0f;
+        float w = 0f;
+
+        int largestIndex = ReadInt(stream, 0, 3);
+        //Debug.Log("read largestIndex: " + largestIndex);
+        //largestIndex needs to be calculated
+        float a = ReadFloat(stream, -1f, 1f, precision);
+        float b = ReadFloat(stream, -1f, 1f, precision);
+        float c = ReadFloat(stream, -1f, 1f, precision);
+
+        float d = Mathf.Sqrt(1f - ((a * a) + (b * b) + (c * c))); //largest
+
+        //Debug.Log(a + " : " + b + " : " + c + " : " + d);
+
+        switch(largestIndex) {
+            case 0:
+                return new Quaternion(d, a, b, c);
+                break;
+            case 1:
+                return new Quaternion(a, d, b, c);
+                break;
+
+            case 2:
+                return new Quaternion(a, b, d, c);
+                break;
+            case 3:
+                return new Quaternion(a, b, c, d);
+                break;
+        }
+
+        return new Quaternion(0f, 0f, 0f, 1f);
+    }
+
+    public static int RequiredBitsQuaternion(float precision = 0.0000001f) {
+        int s = 0;
+        s += RequiredBitsInt(0, 3);
+        s += RequiredBitsFloat(-1f, 1f, precision);
+        s += RequiredBitsFloat(-1f, 1f, precision);
+        s += RequiredBitsFloat(-1f, 1f, precision);
+
+        //Debug.Log("btf: " + RequiredBitsFloat(-1f, 1f, precision));
+        return s;
+    }
 }
