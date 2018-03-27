@@ -22,6 +22,11 @@ public class CubeBehaviour : NetworkGameObject {
 
     public Vector3 targetPos;
     public Quaternion targetRotation;
+    public float floatValue = 0f;
+    public int intValue = 0;
+
+    public float targetFloat = 0f;
+    public int targetInt = 0;
 
     public void Awake() {
         rb = this.GetComponent<Rigidbody>();
@@ -32,8 +37,12 @@ public class CubeBehaviour : NetworkGameObject {
         if(!isOwner()) {
 
             //update the position with the interpolated version (using our interp time
-            this.transform.position = GetInterpolatedPosition();
-            this.transform.rotation = GetInterpolatedRotation();
+            this.transform.position = GetInterpolatedPosition(0); //we should come up with a more modular way to store these
+                                                                 //what if we want more than one position per state (for whatever reason)
+            this.transform.rotation = GetInterpolatedRotation(0); //or we want to interpolate a float (for colour or something) idk
+
+            this.floatValue = GetInterpolatedFloat(0);
+            this.intValue = GetInterpolatedInt(0);
 
         } else {
 
@@ -42,10 +51,14 @@ public class CubeBehaviour : NetworkGameObject {
                 deg = 0;
                 targetPos = new Vector3(Random.Range(-3f, 3f), Random.Range(0f, 1f), Random.Range(-3f, 3f));
                 targetRotation = Random.rotation;
+                targetFloat = Random.Range(-100f, 100f);
+                targetInt = Random.Range(-100, 100);
             }
 
             this.transform.position = Vector3.Lerp(this.transform.position, targetPos, lerpSpeed * Time.deltaTime);
             this.transform.rotation = Quaternion.Slerp(this.transform.rotation, targetRotation, lerpSpeed * Time.deltaTime);
+            floatValue = Mathf.Lerp(floatValue, targetFloat, lerpSpeed * Time.deltaTime);
+            intValue = (int)Mathf.Lerp(intValue, targetInt, lerpSpeed * Time.deltaTime);
             //float x = Mathf.Cos(deg * Mathf.Deg2Rad) * radius;
             //float z = Mathf.Sin(deg * Mathf.Deg2Rad) * radius;
 
@@ -75,8 +88,10 @@ public class CubeBehaviour : NetworkGameObject {
 
     public override void OnStateUpdate(params object[] args) {
         //if(!(bool)args[0]) { //!isSleeping
-        StorePositionSnapshot((float)args[0], (float)args[1], (float)args[2]);
-        StoreRotationSnapshot((Quaternion)args[3]);
+        StorePositionSnapshot(0, (float)args[0], (float)args[1], (float)args[2]);
+        StoreRotationSnapshot(0, (Quaternion)args[3]);
+        StoreIntSnapshot(0, (int)args[4]);
+        StoreFloatSnapshot(0, (float)args[5]);
         //}
     }
 
@@ -85,6 +100,8 @@ public class CubeBehaviour : NetworkGameObject {
         s += SerializerUtils.RequiredBitsFloat(-10f, 10f, 0.0001f);
         s += SerializerUtils.RequiredBitsFloat(-10f, 10f, 0.0001f);
         s += SerializerUtils.RequiredBitsFloat(-10f, 10f, 0.0001f);
+        s += SerializerUtils.RequiredBitsInt(-100, 100);
+        s += SerializerUtils.RequiredBitsFloat(-100f, 100f, 0.001f);
         s += SerializerUtils.RequiredBitsQuaternion(0.001f);
         return s;
     }
@@ -103,6 +120,8 @@ public class CubeBehaviour : NetworkGameObject {
         SerializerUtils.WriteFloat(stream, this.transform.position.x, -10f, 10f, 0.0001f);
         SerializerUtils.WriteFloat(stream, this.transform.position.y, -10f, 10f, 0.0001f);
         SerializerUtils.WriteFloat(stream, this.transform.position.z, -10f, 10f, 0.0001f);
+        SerializerUtils.WriteInt(stream, intValue, -100, 100);
+        SerializerUtils.WriteFloat(stream, floatValue, -100f, 100f, 0.001f);
         SerializerUtils.WriteQuaterinion(stream, this.transform.rotation, 0.001f);
     }
 
@@ -111,9 +130,11 @@ public class CubeBehaviour : NetworkGameObject {
         float x = SerializerUtils.ReadFloat(stream, -10f, 10f, 0.0001f);
         float y = SerializerUtils.ReadFloat(stream, -10f, 10f, 0.0001f);
         float z = SerializerUtils.ReadFloat(stream, -10f, 10f, 0.0001f);
+        int iValue = SerializerUtils.ReadInt(stream, -100, 100);
+        float fValue = SerializerUtils.ReadFloat(stream, -100f, 100f, 0.001f);
         Quaternion rotation = SerializerUtils.ReadQuaternion(stream, 0.001f);
 
-        Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, x, y, z, rotation);
+        Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, x, y, z, rotation, iValue, fValue);
     }
 
     public void OnDestroy() {
