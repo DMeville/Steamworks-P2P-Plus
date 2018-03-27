@@ -92,6 +92,14 @@ public static class SerializerUtils  {
         return 1;
     }
 
+    public static void WriteBool(UdpKit.UdpStream stream, bool value) {
+        stream.WriteBool(value);
+    }
+
+    public static bool ReadBool(UdpKit.UdpStream stream) {
+        return stream.ReadBool();
+    }
+
     public static int RequiredBitsFloat(float minValue = float.MinValue, float maxValue = float.MaxValue, float precision = 0.0000001f) {
         int intMax = (int)((maxValue - minValue + precision) * (1f / precision)); 
         return (int)RequiredBitsInt(0, intMax);

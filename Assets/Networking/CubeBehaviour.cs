@@ -13,37 +13,61 @@ public class CubeBehaviour : NetworkGameObject {
     //idk?
     public float updateRate = 0.3f;
     public float _updateRate = 0f;
+    public Rigidbody rb;
 
-    public void Update() {
-        if(owner != Core.net.me.connectionIndex) return;
+    public float deg = 0f;
+    public float rotSpeed = 90f;
+    public float radius = 1f;
 
-        _updateRate -= Time.deltaTime;
-        if(_updateRate <= 0f) {
-            _updateRate = updateRate;
-            SendState();
+    public void Awake() {
+        rb = this.GetComponent<Rigidbody>();
+    }
+
+    public override void Update() {
+        base.Update();
+        if(!isOwner()) return;
+
+        deg += Time.deltaTime * rotSpeed;
+
+        float x = Mathf.Cos(deg * Mathf.Deg2Rad) * radius;
+        float z = Mathf.Sin(deg * Mathf.Deg2Rad) * radius;
+
+        this.transform.position = new Vector3(x, 0f, z);
+    }
+    
+
+    //how do I do interpolation if state updates are not coming at a regular interval?
+    //If I haven't got an update for more than (NetworkSim*6)ms, do I just snap?
+    //Otherwise if I have got an update.  20/60 network rate is one packet every 50 ms.  
+    
+
+
+    public override void OnSpawn() {
+        //if you own it, subscribe to the NetworkSendEvent
+        if(isOwner()) {
+            Core.net.NetworkSendEvent += OnNetworkSend;
         }
     }
 
-    public void SendState() {
+    //triggered right before a packet is going out.  This is where you want to
+    //queue the state update message
+    public override void OnNetworkSend() {
         Core.net.QueueEntityMessage("StateUpdate", this, this.prefabId, this.networkId, this.owner, this.controller);
     }
 
-    public override void OnSpawn() {
-
-    }
-
     public override void OnStateUpdate(params object[] args) {
-        this.transform.position = new Vector3((float)args[0], (float)args[1], (float)args[2]);
+        //if(!(bool)args[0]) { //!isSleeping
+            this.transform.position = new Vector3((float)args[0], (float)args[1], (float)args[2]);
+        //}
     }
 
     public override int Peek() {
         int s = 0;
-
-        s += SerializerUtils.RequiredBitsFloat(-10f, 10f, 0.0001f); 
         s += SerializerUtils.RequiredBitsFloat(-10f, 10f, 0.0001f);
         s += SerializerUtils.RequiredBitsFloat(-10f, 10f, 0.0001f);
+        s += SerializerUtils.RequiredBitsFloat(-10f, 10f, 0.0001f);
 
-        return 0;
+        return s;
     }
 
     public override float Priority(ulong sendTo) {
@@ -52,6 +76,9 @@ public class CubeBehaviour : NetworkGameObject {
         //requires some player metatdata to be accessed from *somewhere* though...
         return 1f;
     }
+
+    //bolt 3 float properties compressed the same (18 bits each = 54 bits)
+    //20 packets per second, means 1080 bits or 135 bytes per second or 0.135 bytes per second
 
     public override void Serialize(UdpStream stream) {
         SerializerUtils.WriteFloat(stream, this.transform.position.x, -10f, 10f, 0.0001f);
@@ -64,7 +91,13 @@ public class CubeBehaviour : NetworkGameObject {
         float x = SerializerUtils.ReadFloat(stream, -10f, 10f, 0.0001f);
         float y = SerializerUtils.ReadFloat(stream, -10f, 10f, 0.0001f);
         float z = SerializerUtils.ReadFloat(stream, -10f, 10f, 0.0001f);
+        
 
         Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, x, y, z);
+    }
+
+    public void OnDestroy() {
+        Core.net.NetworkSendEvent -= OnNetworkSend;
+        Core.net.NetworkSendEvent -= OnNetworkSend;
     }
 }

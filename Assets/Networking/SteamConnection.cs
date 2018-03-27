@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using ByteStream = UdpKit.UdpStream;
+using Sirenix.OdinInspector;
 
 /// <summary>
 /// Not actually a connection, just the node of the connection (endpoint, or us)
@@ -18,8 +19,10 @@ public class SteamConnection {
     public float connectionEstablishedTime = 0f;
     public float timeSinceLastMsg = 0f; //send or rec
 
+    [HideInInspector]
     public NetworkGameObject[] entities; //entities this connection owns.  Everyone replicates this list, or tries to.
-    //we need a readstream for all incoming data, and a write stream per packet. along with a message queue to each connection
+                                         //we need a readstream for all incoming data, and a write stream per packet. along with a message queue to each connection
+    //[HideInPlayMode]
     public List<NetworkMessage> messageQueue = new List<NetworkMessage>();
 
 

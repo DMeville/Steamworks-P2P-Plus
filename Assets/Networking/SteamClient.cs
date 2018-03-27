@@ -110,6 +110,7 @@ public class SteamClient:MonoBehaviour {
             }
 
             GUILayout.Label(string.Format("State: {0} - Relay: {1} - Packets: {2} - Bytes:{3} - Ping:{4}", connectionState, k.Value.connectionState.UsingRelay, k.Value.connectionState.PacketsQueuedForSend, k.Value.connectionState.BytesQueuedForSend, k.Value.ping));
+            GUILayout.Label(string.Format("In: {0} - Out: {1}", Core.net.bytesInPerSecond, Core.net.bytesOutPerSecond));
             GUILayout.BeginHorizontal();
 
             if(GUILayout.Button("SendP2P")) {

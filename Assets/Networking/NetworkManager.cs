@@ -10,7 +10,7 @@ using System;
 using BitTools;
 using ByteStream = UdpKit.UdpStream;
 
-public class NetworkManager:SerializedMonoBehaviour {
+public class NetworkManager:MonoBehaviour {
     public static NetworkManager instance;
 
     public int networkSimulationRate = 20; //# of packets to send per second (at 60fps)
@@ -19,11 +19,27 @@ public class NetworkManager:SerializedMonoBehaviour {
     public float keepAliveTimer = 10f; //seconds
 
     public int maxPlayers = 255; //connected at once. should be a power of 2 (-1). 2, 4, 8, 16, 32, 64, 128, 256.  etc.  Used for packing data, so leaving this at 255 when you only connect 4 players would be a huge waste.  don't  do that.
+    public int maxMessageTypes = 255; //does not include states.  States use maxPrefabs
     public int maxPrefabs = 4095; //[0-maxPrefab] range for bitpacking.  The fewer prefabs we have, the better we can pack.  255 fits in 8 bits.  These are prefabs you can spawn over the network.
     public int maxNetworkIds = 4095; // sent over the net as (connectionNum) (networkId). since every client can spawn prefabs, this will ensure no overlap while not having to sync lists, or go through one player to ensure no overlap. 
-    public int maxStates = 255; //separate state defintions.  Need to do lookups so we know how to read/write custom state data.
+    //public int maxStates = 255; //separate state defintions.  Need to do lookups so we know how to read/write custom state data.
     private int networkIds = 0;
     public int packetSize = 1024 * 2; //(udpkit default, dunno)
+
+
+    public bool measureBandwidth = false; //measuring bandwidth isn't _slow_ or anything, just might not be something you need/want
+    public float bandwidthBuffer = 1f; //how long (in seconds) to keep data in the bandwidthBuffer for measuring in/out. A larger time means it's averaged over that time.  1s will be erratic but more accurate, 10s will be smoother
+
+    //[HideInInspector]
+    public List<BandwidthData> bitsInBuffer = new List<BandwidthData>();
+    //[HideInInspector]
+    public List<BandwidthData> bitsOutBuffer = new List<BandwidthData>();
+
+    //public int bitsIn = 0;
+    //public int bitsOut = 0;
+
+    public int bytesInPerSecond = 0;
+    public int bytesOutPerSecond = 0;
 
     public List<NetworkGameObject> registerPrefabsOnStart = new List<NetworkGameObject>();
 
@@ -53,36 +69,12 @@ public class NetworkManager:SerializedMonoBehaviour {
     public List<string> NetworkPrefabNames = new List<string>();
     public List<NetworkGameObject> NetworkPrefabs = new List<NetworkGameObject>();
 
-    //state serialize, deserialize, no process, as it goes in the entity state, peek, priority calculator
-    //public delegate int StatePeeker(params object[] args);
-    //public delegate void StateSerializer(ulong receiver, ByteStream stream, int prefabId, int networkId, int owner, int controller, int stateCode, params object[] args);
-    //public delegate void StateDeserializer(ulong sender, ByteStream stream, int prefabId, int networkid, int owner, int controller, int stateCode);
-    //public delegate float StatePriorityCalculator(ulong receiver, int prefabId, int networkId, int owner, int controller, int stateCode, params object[] args);
-
-    //public List<string> StateCodes = new List<string>();
-    //public List<StateSerializer> StateSerializers = new List<StateSerializer>();
-    //public List<StateDeserializer> StateDeserializers = new List<StateDeserializer>();
-    //public List<StatePeeker> StatePeekers = new List<StatePeeker>();
-    //public List<StatePriorityCalculator> StatePriorityCalculators = new List<StatePriorityCalculator>();
-
+    public Action NetworkSendEvent;    
 
     //STATES
-    //need a priority to decide if we should or should not send them (based on some filter)
     //needs a way to update queued messages with the most recent data right before they go out. (not important for now, but would be nice, no reason to queue two messages, only need the one with the latest data (unless we need it for interpolation?) idk
-    //needs a peek, serialize and deserialize, to inject into the pack sequence if it's a state update (for custom data)
-    //should states be defined when we SpawnPrefab? When we register prefab? When we spawm prefab internally on the behaviour script? (eg, state = Core.net.GetState("CubeBehaviour"));
-    //maybe we could register states automatically when registering prefabs? search for a attached NetworkGameObject, and add it by script name?
-    //then can always add extra states after, too..
-    //that sounds like the proper way to do it.  As states are ALWAYS tied to an entity, no need to register/manage them manually I guess
-    //Do I even need any of thsese then? or can I just call the methods directly on the object?
-    //A registered prefab will ALWAYS have the same state, so just assume it has the right one on it, and call the internal methods?
-    //remove the idea of states entirely and don't register them
-
-    //we need a priority system.  Every time a message in the queue is skipped we 
-    //should we define a "Priority" Message delegate, that we can call to calculate the priority 
-    //would need one for normal messages, and one for state replicate/entity events?
-    //state messages should be cleared from the queue if they sit there too long
-    //or maybe they can be replaced/updated or something with the "latest" data
+    
+  
 
     void Awake() {
 
@@ -90,7 +82,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         instance = this;
         Core.net = this;
 
-        networkSimulationTimer = (1f / 60f) * (60f / networkSimulationRate);
+        networkSimulationTimer = GetNetworkSimulationTimer();
         //register internal message types
         //RegisterInternalMessages.Register(); //to tidy it up, moved all this stuff to a nother class
 
@@ -132,6 +124,11 @@ public class NetworkManager:SerializedMonoBehaviour {
         }
     }
 
+    //returns how many seconds per network tick (networkSimulation rate of 20 => 50ms, or one tick ever ~ 3 fixedUpdates
+    public float GetNetworkSimulationTimer() {
+        return (1f / 60f) * (60f / networkSimulationRate);
+    }
+
     //private int RegisterStateType(string stateName, StatePeeker peeker, StatePriorityCalculator priority, StateSerializer serializer, StateDeserializer deserializer) {
     //    if(StateCodes.Contains(stateName)) {
     //        Debug.LogException(new Exception("Can not register state type [" + stateName + "] because a state already exists with that name"));
@@ -165,6 +162,9 @@ public class NetworkManager:SerializedMonoBehaviour {
         MessagePriorityCalculators.Add(priority);
 
         int msgId = MessageCodes.Count - 1;
+        if(msgId > maxMessageTypes) {
+            Debug.LogException(new Exception("Message type [" + messageName + "] was registered outside the max range [" + maxMessageTypes + "]. Using this message will cause problems"));
+        }
         return msgId;
     }
 
@@ -182,7 +182,7 @@ public class NetworkManager:SerializedMonoBehaviour {
     public void SendMessageImmediate(ulong sendTo, int msgCode, params object[] args) {
         writeStream.Reset(packetSize);
 
-        SerializerUtils.WriteInt(writeStream, msgCode, 0, 255);
+        SerializerUtils.WriteInt(writeStream, msgCode, 0, maxMessageTypes);
         if(MessageSerializers[msgCode] != null) {
             MessageSerializers[msgCode](sendTo, writeStream, args);
         } else {
@@ -273,6 +273,14 @@ public class NetworkManager:SerializedMonoBehaviour {
         return prefabId;
     }
 
+    //Gets the prefabId by name.  Use this like Core.net.SpawnPrefab(Core.net.GetPrefabId("MyPrefab"))
+    public int GetPrefabId(string prefabName) {
+        if(NetworkPrefabNames.Contains(prefabName)) {
+            return NetworkPrefabNames.IndexOf(prefabName);
+        }
+        throw new Exception("Prefab with name [" + prefabName + "] does not exist");
+    }
+
     public GameObject GetPrefab(int prefabId) {
         NetworkGameObject n = GetPrefabNetworkGameObject(prefabId);
         if(n != null) {
@@ -302,6 +310,10 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     public int GetNextNetworkId() {
         return networkIds++;
+    }
+
+    public GameObject SpawnPrefab(string prefabName) {
+        return SpawnPrefab(GetPrefabId(prefabName));
     }
 
     public GameObject SpawnPrefab(int prefabId) {
@@ -355,8 +367,7 @@ public class NetworkManager:SerializedMonoBehaviour {
     //includes me
     public SteamConnection GetConnection(int connectionIndex) {
         if(me.connectionIndex == connectionIndex) return me;
-
-        SteamConnection c = connections.Values.Where(s => s.connectionIndex == connectionIndex).First();
+        SteamConnection c = connections.Values.Where(s => s.connectionIndex == connectionIndex).FirstOrDefault();
         return c;
     }
 
@@ -402,7 +413,16 @@ public class NetworkManager:SerializedMonoBehaviour {
     public void NetworkSend() {
         //Debug.Log("NetworkSend");
         UnityEngine.Profiling.Profiler.BeginSample("Network Send");
+
+        if(NetworkSendEvent != null) NetworkSendEvent();
+
         foreach(SteamConnection sc in connections.Values) {
+
+            //walk the entities and say "hey, we're sending this frame" so we can update the state?
+            //or, let entities subscribe to an event?  Wonder how much faster it would be vs walking the entire entity list.
+            //if we had 4096 entites (max) things would break down anyways.  Probably don't want to just
+            //add state update messages willy-nilly.  Should check priority or somethings?
+
             if(sc.messageQueue.Count > 0) {
                 //pack
                 writeStream.Reset(packetSize);
@@ -460,22 +480,33 @@ public class NetworkManager:SerializedMonoBehaviour {
                             //maybe NEVER remove a spawn request (even with priority 0?)
                             //add it to a list and just buffer the message until we get into the area?
                             //that could work...
+
                         }
 
                         //get the total message size to check if it will fit
-                        int msgSize = 8; //8 bits for the msgCode included before the data
+                        int msgSize = SerializerUtils.RequiredBitsInt(0, maxMessageTypes); //8 bits for the msgCode included before the data
                         if(MessagePeekers[m.msgCode] != null) { //if it's null we don't have any data to send, just the msgCode (like for a keep alive)
                             msgSize += Core.net.MessagePeekers[m.msgCode](m.args);
 
                             if(IsEntityMsg(m.msgCode)) {
-                                msgSize += m.entity.Peek(); //entity state msgSize
+                                int entityDataSize = m.entity.Peek();
+                                msgSize += entityDataSize; //entity state msgSize
                                 //Debug.Log("msgSize: ["+m.msgCode+"]: " + msgSize);
+                                //if size is zero, we should just NOT send the message
+                                if(entityDataSize == 0) {
+                                    //just don't send it, no point wasting 8 bits with an empty message code.
+                                    //Debug.Log("removed");
+                                    sc.messageQueue.RemoveAt(i);
+                                    i--;
+                                    continue;
+                                }
                             }
 
                         }
                         //Debug.Log("CanWrite: " + msgSize + " : " + writeStream.CanWrite(msgSize));
                         if(writeStream.CanWrite(msgSize)) { //will it fit?
-                            SerializerUtils.WriteInt(writeStream, m.msgCode, 0, 255); //write the msgCode
+                            //Debug.Log("write message");
+                            SerializerUtils.WriteInt(writeStream, m.msgCode, 0, maxMessageTypes); //write the msgCode
                             if(MessageSerializers[m.msgCode] != null) {
                                 Core.net.MessageSerializers[m.msgCode](sc.steamID, writeStream, m.args); //write the rest of the data
 
@@ -487,6 +518,7 @@ public class NetworkManager:SerializedMonoBehaviour {
                             //remove this message from the list.
                             sc.messageQueue.RemoveAt(i);
                             i--;
+                            continue;
                         } else {
                             m.skipped++;
                             //Debug.Log("trying next message, can't fit..");
@@ -516,7 +548,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         if(connections.ContainsKey(steamID)) {
             connections[steamID].timeSinceLastMsg = 0f;
         } //otherwise we just haven't established the connection yet (as this must be a connect request message)
-        //Debug.Log("SendP2PData: " + length);
+        Debug.Log("SendP2PData: " + length);
         return Client.Instance.Networking.SendP2PPacket(steamID, data, data.Length, sendType, channel);
     }
 
@@ -525,10 +557,11 @@ public class NetworkManager:SerializedMonoBehaviour {
         readStream = new UdpKit.UdpStream(bytes, length);
         //Debug.Log("rec message");
         //string s = stream.ReadString();
-        while(readStream.CanRead() && readStream.CanRead(8)) {
-            int msgCode = (int)SerializerUtils.ReadInt(readStream, 0, 255);
+        while(readStream.CanRead() && readStream.CanRead(SerializerUtils.RequiredBitsInt(0, maxMessageTypes))) {
+            int msgCode = (int)SerializerUtils.ReadInt(readStream, 0, maxMessageTypes);
             //Debug.Log("[REC] MessageCode: " + msgCode);
             if(msgCode == GetMessageCode("Empty")) {
+                AddToBandwidthInBuffer(-8);
                 break; //no more data, the rest of this packet is junk
             } 
 
@@ -664,10 +697,46 @@ public class NetworkManager:SerializedMonoBehaviour {
 
             NetworkSend();
         }
+
+        //measuring bits in and bits out
+        int bIn = 0;
+        for(int i = 0; i < bitsInBuffer.Count; i++) {
+            bitsInBuffer[i].timeInBuffer += Time.deltaTime;
+            if(bitsInBuffer[i].timeInBuffer >= bandwidthBuffer) {
+                bitsInBuffer.RemoveAt(i);
+                i--;
+            } else {
+                bIn += bitsInBuffer[i].bits;
+            }
+        }
+
+        int bOut = 0;
+        for(int i = 0; i < bitsOutBuffer.Count; i++) {
+            bitsOutBuffer[i].timeInBuffer += Time.deltaTime;
+            if(bitsOutBuffer[i].timeInBuffer >= bandwidthBuffer) {
+                bitsOutBuffer.RemoveAt(i);
+                i--;
+            } else {
+                bOut += bitsOutBuffer[i].bits;
+            }
+        }
+
+        bytesInPerSecond = (int)((float)bIn / (8f * bandwidthBuffer));
+        bytesOutPerSecond = (int)((float)bOut / (8f * bandwidthBuffer));
     }
 
-  
 
+    public void AddToBandwidthOutBuffer(int numBits) {
+        if(!measureBandwidth) return;
+        bitsOutBuffer.Add(new BandwidthData(numBits));
+    }
+
+    public void AddToBandwidthInBuffer(int numBits) {
+        if(!measureBandwidth) return;
+        bitsInBuffer.Add(new BandwidthData(numBits));
+    }
+
+   
 
     //cleanup method.  Closes all sessions when we close the game, this makes it so 
     //other players don't have to wait for a timeout to be detected before removing you when you leave (in most cases)
@@ -683,5 +752,8 @@ public class NetworkManager:SerializedMonoBehaviour {
         NetworkManager.instance = null;
     }
 
-    
+
 }
+
+
+

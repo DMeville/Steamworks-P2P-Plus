@@ -102,6 +102,9 @@ namespace UdpKit {
             if (UdpLog.IsEnabled(UdpLog.TRACE))
                 UdpLog.Trace("Writing bool (1 bit)");
 #endif
+            //Core.net.bitsOut += 1;
+            Core.net.AddToBandwidthOutBuffer(1);
+            //UnityEngine.Debug.Log("Write Bool (1 bit");
             InternalWriteByte(value ? (byte)1 : (byte)0, 1);
             return value;
         }
@@ -111,6 +114,10 @@ namespace UdpKit {
             if (UdpLog.IsEnabled(UdpLog.TRACE))
                 UdpLog.Trace("Reading bool (1 bit)");
 #endif
+            //Core.net.bitsIn += 1;
+            Core.net.AddToBandwidthInBuffer(1);
+
+            //UnityEngine.Debug.Log("Read Bool (1 bit");
             return InternalReadByte(1) == 1;
         }
 
@@ -234,7 +241,9 @@ namespace UdpKit {
             if (UdpLog.IsEnabled(UdpLog.TRACE))
                 UdpLog.Trace("Writing uint ({0} bits)", bits);
 #endif
-
+            //UnityEngine.Debug.Log("Write Int (" + bits + " bits)");
+            Core.net.AddToBandwidthOutBuffer(bits);
+            //Core.net.bitsOut += bits;
             //UnityEngine.Debug.Log(string.Format("Writing uint ({0} bits)", bits));
             byte
                 a = (byte)(value >> 0),
@@ -272,6 +281,9 @@ namespace UdpKit {
             if (UdpLog.IsEnabled(UdpLog.TRACE))
                 UdpLog.Trace("Reading uint ({0} bits)", bits);
 #endif
+            //UnityEngine.Debug.Log("Read Int (" + bits + " bits)");
+            //Core.net.bitsIn += bits;
+            Core.net.AddToBandwidthInBuffer(bits);
             int
                 a = 0,
                 b = 0,

@@ -25,6 +25,8 @@ public abstract class NetworkGameObject:MonoBehaviour {
     /// </summary>
     public abstract void OnSpawn();
 
+    public abstract void OnNetworkSend();
+
     public abstract int Peek();
 
     public abstract float Priority(ulong sendTo);
@@ -37,6 +39,50 @@ public abstract class NetworkGameObject:MonoBehaviour {
     public abstract void Deserialize(ByteStream stream, int prefabId, int networkId, int owner, int controller);
 
     public abstract void OnStateUpdate(params object[] args);
+
+    public virtual void Update() {
+    //    SimulateOwner();
+    }
+
+    //public abstract void SimulateOwner();
+
+
+    /// <summary>
+    /// Are you the owner of this entity?
+    /// </summary>
+    /// <returns>true if you are the owner</returns>
+    public bool isOwner() {
+        return Core.net.me.connectionIndex == owner;
+    }
+
+
+    /// <summary>
+    /// Are you the controller of this entity?
+    /// </summary>
+    /// <returns>true if you are the controller</returns>
+    public bool isController() {
+        //I'm wondering if we really need a distinction between owner and controller though.
+        //Can you ever be the owner but not the controller?
+        //That would mean it would still be in your entity list, but you are not the highest auth 
+        //someone else would be sending state updates, and that shouldn't happen.
+        //If you spawn an object, then someone else shows up with higher auth, you should pass ownership to them
+        //means they get the spawn, and you remove it from your entity list (and they remove it from their copy of your entity list)
+        //and you both add it to theirs.  Now they are in control, and send updates.
+        //You can still send updates about that object
+
+        //eg,There is a physics box, you want to push it.  A has higher auth, you are B.  THey are the owner.
+        //you start touching the box and INSTANTLY take control of it on your client so you can
+        //push it responsively.  You start sending updates to the owner about how you are pushing this box
+        //after some time of inactivity with the box they take control back.
+        //if there is a disagreement, about who has control, the owner decides.
+
+        //we would need to do logic in Update to decide if you want to try and take control
+        //and send the "takeControl" message along with hooking into
+        //NetworkSendEvent when we have control to send the state updates
+
+        //So yes, there is need for a distinction.
+        return Core.net.me.connectionIndex == controller;
+    }
 }
     
     

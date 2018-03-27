@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 //wrapper for our message queue.
+[System.Serializable]
 public class NetworkMessage {
     public int msgCode;
     public object[] args;
