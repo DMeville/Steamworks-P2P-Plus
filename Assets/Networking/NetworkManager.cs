@@ -548,7 +548,7 @@ public class NetworkManager:MonoBehaviour {
         if(connections.ContainsKey(steamID)) {
             connections[steamID].timeSinceLastMsg = 0f;
         } //otherwise we just haven't established the connection yet (as this must be a connect request message)
-        Debug.Log("SendP2PData: " + length);
+        //Debug.Log("SendP2PData: " + length);
         return Client.Instance.Networking.SendP2PPacket(steamID, data, data.Length, sendType, channel);
     }
 

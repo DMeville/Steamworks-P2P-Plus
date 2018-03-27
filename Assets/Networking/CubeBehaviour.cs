@@ -25,14 +25,20 @@ public class CubeBehaviour : NetworkGameObject {
 
     public override void Update() {
         base.Update();
-        if(!isOwner()) return;
+        if(!isOwner()) {
 
-        deg += Time.deltaTime * rotSpeed;
+            //update the position with the interpolated version (using our interp time
+            this.transform.position = GetInterpolatedPosition();
 
-        float x = Mathf.Cos(deg * Mathf.Deg2Rad) * radius;
-        float z = Mathf.Sin(deg * Mathf.Deg2Rad) * radius;
+        } else {
 
-        this.transform.position = new Vector3(x, 0f, z);
+            deg += Time.deltaTime * rotSpeed;
+
+            float x = Mathf.Cos(deg * Mathf.Deg2Rad) * radius;
+            float z = Mathf.Sin(deg * Mathf.Deg2Rad) * radius;
+
+            this.transform.position = new Vector3(x, 0f, z);
+        }
     }
     
 
@@ -57,7 +63,7 @@ public class CubeBehaviour : NetworkGameObject {
 
     public override void OnStateUpdate(params object[] args) {
         //if(!(bool)args[0]) { //!isSleeping
-            this.transform.position = new Vector3((float)args[0], (float)args[1], (float)args[2]);
+        StorePositionSnapshot(Time.realtimeSinceStartup, (float)args[0], (float)args[1], (float)args[2]);
         //}
     }
 

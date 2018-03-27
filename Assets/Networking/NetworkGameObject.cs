@@ -14,7 +14,9 @@ public abstract class NetworkGameObject:MonoBehaviour {
     public int stateType = 0;
 
 
-    int interpolationBufferTime = 100;//ms
+    public float interpolationBufferTime = 100;//ms.
+    public List<PositionSnapshot> positionSnapshots = new List<PositionSnapshot>();
+
     //hold the packet for this time then pop it to our targetPos;
     //needs interpolation buffer, whatever that means.
 
@@ -53,7 +55,7 @@ public abstract class NetworkGameObject:MonoBehaviour {
     /// <returns>true if you are the owner</returns>
     public bool isOwner() {
         return Core.net.me.connectionIndex == owner;
-    }
+}
 
 
     /// <summary>
@@ -83,7 +85,62 @@ public abstract class NetworkGameObject:MonoBehaviour {
         //So yes, there is need for a distinction.
         return Core.net.me.connectionIndex == controller;
     }
+
+    public void StorePositionSnapshot(float time, float x, float y, float z) {
+        while(positionSnapshots.Count > 10) {
+            positionSnapshots.RemoveAt(0); //only ever store 10
+        }
+
+        positionSnapshots.Add(new PositionSnapshot() { timeRec = time, pos = new Vector3(x, y, z) });
+    }
+
+    public Vector3 GetInterpolatedPosition() {
+        float renderTime = Time.realtimeSinceStartup - (interpolationBufferTime/1000f); //1/1000 to convert ms to s
+        //do we have at least two snapshots to interp between?
+        if(positionSnapshots.Count == 0) {
+            //hmmmmmmmmmm.  When we get our spawn, we should have at least one position stored.
+            //this should never happen, unless we are trying to interpolate a state that doesn't have a transform, which you can't do
+            return new Vector3(0, 0, 0);
+        } else if(positionSnapshots.Count == 1) {
+            //can't interp, just snap to our most recent time
+            return positionSnapshots[0].pos;
+        } else {
+            //we can interp so long as we have one interp position on either side of 
+            //we need one interp with time < renderTime, and one with time > renderTime,
+            //so find where time > renderTime changes from true to false
+            bool foundTransition = false;
+            int left = 0;
+            int right = 0;
+            for(int i = positionSnapshots.Count-2; i >= 0; i--) { //start at the end (-1 because we need i and i++), because the switch should lbe closer here
+                if(!positionSnapshots.WithinRange(i + 1)) continue;
+                if(renderTime > positionSnapshots[i].timeRec && renderTime < positionSnapshots[i + 1].timeRec) {
+                    foundTransition = true;
+                    left = i;
+                    right = i + 1;
+                    break;
+                }
+            }
+
+            if(foundTransition) {
+                float lerpTime = Mathf.InverseLerp(positionSnapshots[left].timeRec, positionSnapshots[right].timeRec, renderTime);
+                return Vector3.Lerp(positionSnapshots[left].pos, positionSnapshots[right].pos, lerpTime);
+            } else {
+                //this could happen if every snapshot position is < renderTime,
+                //so we should just set it to the oldest entry
+                return positionSnapshots[positionSnapshots.Count - 1].pos;
+            }
+
+            return new Vector3(0, 0, 0);
+        }
+    }
 }
-    
+
+[System.Serializable]
+public class PositionSnapshot {
+    public float timeRec = 0f;
+    public Vector3 pos;
+}
+
+  
     
 
