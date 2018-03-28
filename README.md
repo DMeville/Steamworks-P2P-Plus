@@ -2,7 +2,7 @@
 
 Still super WIP.
 
-I wanted something slightly higher level than using the SendP2PPacket method in steamworks so I made this for a prototype I'm working on. Wanting to make a distributed authority co-op adventure game. Has to be able to work with mods, has to be able to migrate entities smoothly, and has to be able to run without a central authority/server.  I'm trying to keep the networking system seperate from my prototype-specific stuff, but some features go pretty deep. 
+I wanted something slightly higher level than using the SendP2PPacket method in steamworks so I made this for a prototype I'm working on which is a distributed authority co-op adventure game. Has to be able to work with mods, has to be able to migrate entities smoothly, and has to be able to run without a central authority/server.  I'm trying to keep the networking system seperate from my prototype-specific stuff, but some features go pretty deep. 
 
 All the good stuff is in NetworkManager.cs, methods called via Core.net or NetworkManager.instance
 
