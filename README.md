@@ -98,7 +98,7 @@ Core.net.QueueMessage(targetSteamId, "TestMessage", myBool, myInt, myFloat1, myF
 Core.net.QueueMessage(targetSteamId, "TestMessage", false, 5, 0.34f, -3.241f);
 ```
 
-# Networked Game Object
+# Network Entity
 See [Assets/Networking/CubeBehaviour.cs](https://github.com/DMeville/Steamworks-P2P-Plus/blob/master/Assets/Networking/CubeBehaviour.cs) for a full example.
 
 Define your prefab type and signature somewhere. Ideally all in the same class. These types are turned into ints and sent over the wire, so it's crucial every connected client has the same message type ordering.
@@ -106,7 +106,7 @@ Define your prefab type and signature somewhere. Ideally all in the same class. 
 ```
 Core.net.RegisterPrefab("MyPrefab", myPrefab);
 ```
-Extend NetworkGameObject and override Peek, Priority, Serialize, and Deserialize using the same method we did for a message above. Attach this "Behaviour" to your prefab. 
+Extend NetworkEntity and override Peek, Priority, Serialize, and Deserialize using the same method we did for a message above. Attach this "Behaviour" to your prefab. 
 
 Then to spawn the prefab:
 
