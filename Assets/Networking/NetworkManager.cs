@@ -41,7 +41,7 @@ public class NetworkManager:MonoBehaviour {
     public int bytesInPerSecond = 0;
     public int bytesOutPerSecond = 0;
 
-    public List<NetworkGameObject> registerPrefabsOnStart = new List<NetworkGameObject>();
+    public List<NetworkEntity> registerPrefabsOnStart = new List<NetworkEntity>();
 
     public SteamConnection me;
     public Dictionary<ulong, SteamConnection> connections = new Dictionary<ulong, SteamConnection>();
@@ -67,7 +67,7 @@ public class NetworkManager:MonoBehaviour {
 
     //prefab stuff
     public List<string> NetworkPrefabNames = new List<string>();
-    public List<NetworkGameObject> NetworkPrefabs = new List<NetworkGameObject>();
+    public List<NetworkEntity> NetworkPrefabs = new List<NetworkEntity>();
 
     public Action NetworkSendEvent;    
 
@@ -104,20 +104,28 @@ public class NetworkManager:MonoBehaviour {
             MessageCode.ConnectRequestResponse.Deserialize,
             MessageCode.ConnectRequestResponse.Process);
 
-        RegisterMessageType("TestState",
-            MessageCode.TestState.Peek,
-            MessageCode.TestState.Priority,
-            MessageCode.TestState.Serialize,
-            MessageCode.TestState.Deserialize,
-            MessageCode.TestState.Process);
 
-        RegisterMessageType("StateUpdate",
-            MessageCode.StateUpdate.Peek,
-            MessageCode.StateUpdate.Priority,
-            MessageCode.StateUpdate.Serialize,
-            MessageCode.StateUpdate.Deserialize,
-            MessageCode.StateUpdate.Process);
-        
+        RegisterMessageType("EntityUpdate",
+            MessageCode.EntityUpdate.Peek,
+            MessageCode.EntityUpdate.Priority,
+            MessageCode.EntityUpdate.Serialize,
+            MessageCode.EntityUpdate.Deserialize,
+            MessageCode.EntityUpdate.Process);
+
+        RegisterMessageType("EntityDestroyRequest", //request event from client -> owner asking to destroy this object
+            MessageCode.EntityDestroy.Peek,
+            MessageCode.EntityDestroy.Priority,
+            MessageCode.EntityDestroy.Serialize,
+            MessageCode.EntityDestroy.Deserialize,
+            MessageCode.EntityDestroy.ProcessDestroyRequest);
+
+        RegisterMessageType("EntityDestroy", //request event from client -> owner asking to destroy this object
+            MessageCode.EntityDestroy.Peek,
+            MessageCode.EntityDestroy.Priority,
+            MessageCode.EntityDestroy.Serialize,
+            MessageCode.EntityDestroy.Deserialize,
+            MessageCode.EntityDestroy.Process);
+
 
         for(int i = 0; i < registerPrefabsOnStart.Count; i++) {
             RegisterPrefab(registerPrefabsOnStart[i].gameObject.name, registerPrefabsOnStart[i]);
@@ -226,26 +234,27 @@ public class NetworkManager:MonoBehaviour {
     }
 
     //sends an entity event to all connections
-    public void QueueEntityMessage(string msgCode, NetworkGameObject entity, params object[] args) {
+    public void QueueEntityMessage(string msgCode, NetworkEntity entity, params object[] args) {
         QueueEntityMessage(GetMessageCode(msgCode), entity, args);
     }
 
-    public void QueueEntityMessage(int msgCode, NetworkGameObject entity, params object[] args) {
+    public void QueueEntityMessage(int msgCode, NetworkEntity entity, params object[] args) {
         foreach(SteamConnection s in connections.Values) {
             QueueEntityMessage(s.steamID, msgCode, entity, args);
         }
     }
-    public void QueueEntityMessage(ulong sendTo, string msgCode, NetworkGameObject entity, params object[] args) {
+    public void QueueEntityMessage(ulong sendTo, string msgCode, NetworkEntity entity, params object[] args) {
         QueueEntityMessage(sendTo, GetMessageCode(msgCode), entity, args);
     }
 
-    public void QueueEntityMessage(ulong sendTo, int msgCode, NetworkGameObject entity, params object[] args) {
+    public void QueueEntityMessage(ulong sendTo, int msgCode, NetworkEntity entity, params object[] args) {
         SteamConnection c = GetConnection(sendTo);
         if(c != null) {
             NetworkMessage msg = new NetworkMessage(msgCode, args);
             msg.entity = entity;
             msg.isEntityMsg = true;
             c.messageQueue.Add(msg);
+            entity.queuedMessage[sendTo] = msg; //straight overwrites, so make sure you handle this interally if it's not null
         }
     }
 
@@ -258,7 +267,7 @@ public class NetworkManager:MonoBehaviour {
     }
 
     //prefab stuff
-    public int RegisterPrefab(string prefabName, NetworkGameObject prefab) {
+    public int RegisterPrefab(string prefabName, NetworkEntity prefab) {
         if(NetworkPrefabs.Count + 1 > maxPrefabs) {
             Debug.LogException(new Exception("Can not register prefab [" + prefabName + "] - Prefab limit has been reached"));
         }
@@ -282,7 +291,7 @@ public class NetworkManager:MonoBehaviour {
     }
 
     public GameObject GetPrefab(int prefabId) {
-        NetworkGameObject n = GetPrefabNetworkGameObject(prefabId);
+        NetworkEntity n = GetPrefabNetworkGameObject(prefabId);
         if(n != null) {
             return n.gameObject;
         } else {
@@ -290,7 +299,7 @@ public class NetworkManager:MonoBehaviour {
         }
     }
 
-    public NetworkGameObject GetPrefabNetworkGameObject(int prefabId) {
+    public NetworkEntity GetPrefabNetworkGameObject(int prefabId) {
         if(NetworkPrefabs.WithinRange(prefabId)) {
             return NetworkPrefabs[prefabId];
         } else {
@@ -328,7 +337,7 @@ public class NetworkManager:MonoBehaviour {
 
         GameObject g = SpawnPrefabInternal(prefabId, networkId, owner, controller);
 
-        QueueEntityMessage(GetMessageCode("StateUpdate"), g.GetComponent<NetworkGameObject>(), prefabId, networkId, owner, controller);
+        QueueEntityMessage(GetMessageCode("EntityUpdate"), g.GetComponent<NetworkEntity>(), prefabId, networkId, owner, controller);
 
         //spawn prefab internal
 
@@ -343,11 +352,11 @@ public class NetworkManager:MonoBehaviour {
         }
 
         GameObject prefab = GetPrefab(prefabId);
-        NetworkGameObject ngo = null;
+        NetworkEntity ngo = null;
 
         if(prefab != null) {
             GameObject g = GameObject.Instantiate(prefab);
-            ngo = g.GetComponent<NetworkGameObject>();
+            ngo = g.GetComponent<NetworkEntity>();
             ngo.prefabId = prefabId;
             ngo.networkId = networkId;
             ngo.owner = owner;
@@ -372,10 +381,10 @@ public class NetworkManager:MonoBehaviour {
     }
 
     public bool IsEntityMsg(int msgCode) {
-        return /*msgCode == GetMessageCode("SpawnPrefab") ||*/ msgCode == GetMessageCode("StateUpdate");
+        return /*msgCode == GetMessageCode("SpawnPrefab") ||*/ msgCode == GetMessageCode("EntityUpdate");
     }
 
-    public NetworkGameObject GetEntity(int owner, int networkId) {
+    public NetworkEntity GetEntity(int owner, int networkId) {
         SteamConnection c = GetConnection(owner);
         if(c != null) {
             return c.entities[networkId];
@@ -388,19 +397,19 @@ public class NetworkManager:MonoBehaviour {
     ///This also spawns an object if the object we received state data for doesn't exist.
     /// </summary>
     public void ProcessEntityMessage(int prefabId, int networkId, int owner, int controller, params object[] args) {
-        NetworkGameObject entity = null;
+        NetworkEntity entity = null;
         entity = GetEntity(owner, networkId);
         if(entity != null) {
-            entity.OnStateUpdate(args);
+            entity.OnEntityUpdate(args);
         } else {
             //this entity doesn't exist for some reason. Maybe it has already been destroyed locally
             //anyways, since we already read from the stream, we can just discard whatever we read
             //without issues to the next messages we read.
             //OR we should spawn it, then pass it the data
-            entity = Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller).GetComponent<NetworkGameObject>();
-            entity.OnStateUpdate(args);
+            entity = Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller).GetComponent<NetworkEntity>();
+            entity.OnEntityUpdate(args);
         }
-        //don't need to process, just call onStateUpdate with our new values
+        //don't need to process, just call onEntityUpdate with our new values
         //Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);
     }
 
@@ -511,7 +520,13 @@ public class NetworkManager:MonoBehaviour {
                                 Core.net.MessageSerializers[m.msgCode](sc.steamID, writeStream, m.args); //write the rest of the data
 
                                 if(IsEntityMsg(m.msgCode)) {
-                                    m.entity.Serialize(writeStream);
+                                    m.entity.queuedMessage[sc.steamID] = null; //clear this so they can queue the next message
+                                    if(m.msgCode == GetMessageCode("EntityUpdate")) {
+                                        m.entity.Serialize(writeStream);
+                                    } else if(m.msgCode == GetMessageCode("EntityDestroy")) {
+                                        m.entity.TryDestroyInternal(); //we can only destroy the entity after the message has been sent. 
+                                        //If we try to destroy it earlier, the entity is already null when trying to send and things fail
+                                    }
                                 }
                             }
                             //Debug.Log("Wrote: " + msgSize + " : new bit position: " + writeStream.Position);
@@ -559,7 +574,7 @@ public class NetworkManager:MonoBehaviour {
         //string s = stream.ReadString();
         while(readStream.CanRead() && readStream.CanRead(SerializerUtils.RequiredBitsInt(0, maxMessageTypes))) {
             int msgCode = (int)SerializerUtils.ReadInt(readStream, 0, maxMessageTypes);
-            //Debug.Log("[REC] MessageCode: " + msgCode);
+            Debug.Log("[REC] MessageCode: " + msgCode);
             if(msgCode == GetMessageCode("Empty")) {
                 AddToBandwidthInBuffer(-8);
                 break; //no more data, the rest of this packet is junk
@@ -576,20 +591,20 @@ public class NetworkManager:MonoBehaviour {
 
     //connection stuff below
     public void RegisterMyConnection(ulong steamID) {
-        Debug.Log("Register my connection");
+        Debug.Log("Register my connection: 0");
         SteamConnection c = new SteamConnection();
         c.steamID = steamID;
         c.connectionIndex = 0;
         me = c;
     }
 
-    public void RegisterConnection(ulong steamID, int playerNum = -1) {
-        if(connections.ContainsKey(steamID)) return; //already in the list
+    public void RegisterConnection(ulong steamID, int playerNum ) {
         SteamConnection c = new SteamConnection();
         c.steamID = steamID;
         c.connectionIndex = playerNum;
         c.connectionEstablishedTime = Time.realtimeSinceStartup;
         connections.Add(c.steamID, c);
+        Debug.Log("Registred incoming connection as: " + playerNum);
     }
 
     public void RemoveConnection(ulong steamID) {
@@ -599,7 +614,7 @@ public class NetworkManager:MonoBehaviour {
     }
 
     public void OnConnectRequest(ulong sender) {
-        if(sender != me.steamID) {
+        if(sender != me.steamID && !connections.ContainsKey(sender)) {
             connectionCounter++;
             RegisterConnection(sender, connectionCounter);
         } else {

@@ -4,7 +4,7 @@ using UdpKit;
 using UnityEngine;
 
 
-public class CubeBehaviour : NetworkGameObject {
+public class CubeBehaviour : NetworkEntity {
 
     //this generally should not be faster than the network simulation rate.
     //if it is you can end up queueing too many messages and things spiral out of control.
@@ -34,6 +34,11 @@ public class CubeBehaviour : NetworkGameObject {
 
     public override void Update() {
         base.Update();
+
+        if(Input.GetKeyDown(KeyCode.Space)) {
+            Destroy();
+        }
+
         if(!isOwner()) {
 
             //update the position with the interpolated version (using our interp time
@@ -83,15 +88,21 @@ public class CubeBehaviour : NetworkGameObject {
     //triggered right before a packet is going out.  This is where you want to
     //queue the state update message
     public override void OnNetworkSend() {
-        Core.net.QueueEntityMessage("StateUpdate", this, this.prefabId, this.networkId, this.owner, this.controller);
+        if(!isFrozen()) {
+            QueueEntityUpdate();
+        }
     }
 
-    public override void OnStateUpdate(params object[] args) {
+    public override void OnEntityUpdate(params object[] args) {
         //if(!(bool)args[0]) { //!isSleeping
+        if(isFrozen()) return; //don't want to apply anything if we're frozen (eg, dead or predicted dead)
+
         StorePositionSnapshot(0, (float)args[0], (float)args[1], (float)args[2]);
         StoreRotationSnapshot(0, (Quaternion)args[3]);
         StoreIntSnapshot(0, (int)args[4]);
         StoreFloatSnapshot(0, (float)args[5]);
+        //if we had another float we wanted to interpolate
+        //StoreFloatSnapshot(1, (float)args[6]); //then call it with GetInterpolatedFloat(1);
         //}
     }
 

@@ -20,7 +20,7 @@ public class SteamConnection {
     public float timeSinceLastMsg = 0f; //send or rec
 
     [HideInInspector]
-    public NetworkGameObject[] entities; //entities this connection owns.  Everyone replicates this list, or tries to.
+    public NetworkEntity[] entities; //entities this connection owns.  Everyone replicates this list, or tries to.
                                          //we need a readstream for all incoming data, and a write stream per packet. along with a message queue to each connection
     //[HideInPlayMode]
     public List<NetworkMessage> messageQueue = new List<NetworkMessage>();
@@ -30,7 +30,7 @@ public class SteamConnection {
     public SteamConnection() {
         if(Core.net == null) return; //this should only return true in the editor.  Odin does something weird that throws errors.
         int max = Core.net.maxNetworkIds;
-        entities = new NetworkGameObject[max];
+        entities = new NetworkEntity[max];
     }
     
     //Returns true if you have higher auth than c, this means you're responisible for sending data to them

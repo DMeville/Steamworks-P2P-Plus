@@ -156,7 +156,7 @@ namespace MessageCode {
     }
 
     //this is used for spawn too, because we spawn an object when we get the first state update from them
-    public class StateUpdate {
+    public class EntityUpdate {
 
         public static void Process(ulong sender, params object[] args) {
             //Debug.Log("Process: " + args[0] + " : " + args[1] + " : " + args[2] + " : " + args[3]);
@@ -190,7 +190,7 @@ namespace MessageCode {
         public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
             //Debug.Log(BitTools.BitDisplay.BytesToString(stream.Data));
 
-            //Debug.Log("MessageCode.StateUpdate.Deserialize");
+            //Debug.Log("MessageCode.EntityUpdate.Deserialize");
             //read the entity header
             int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
             int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
@@ -216,6 +216,85 @@ namespace MessageCode {
 
             //process is called the next level down (prefab's behaviour's deserialize)
             //Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);
+
+        }
+
+        public static int Peek(params object[] args) {
+            int s = 0;
+
+            s += MessageCode.Internal.PeekEntityHeader();
+            //s += Core.net.StatePeekers[prefabId] for initial data
+
+            return s;
+        }
+
+        public static float Priority(ulong receiver, params object[] args) {
+            float p = 1f;
+
+            return p;
+        }
+    }
+
+    public class EntityDestroy {
+
+        public static void Process(ulong sender, params object[] args) {
+            //Debug.Log("Process: " + args[0] + " : " + args[1] + " : " + args[2] + " : " + args[3]);
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+            //Debug.Log("SpawnPrefab::Process: " + prefabId);
+            //Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller);
+            //Core.net.QueueEntityMessage()
+            Core.net.GetEntity(owner, networkId).DestroyInternal();
+        }
+
+        public static void ProcessDestroyRequest(ulong sender, params object[] args) {
+            //Debug.Log("Process: " + args[0] + " : " + args[1] + " : " + args[2] + " : " + args[3]);
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+            //Debug.Log("SpawnPrefab::Process: " + prefabId);
+            //Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller);
+            //Core.net.QueueEntityMessage()
+            Core.net.GetEntity(owner, networkId).Destroy();
+        }
+
+        //
+        public static void Serialize(ulong receiver, ByteStream stream, params object[] args) {
+            //Debug.Log("Serialize: " + args[0] + " : " + args[1] + " : " + args[2] + " : " + args[3]);
+            //Debug.Log("Serialize: " + args[0]);
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+
+            //Debug.Log("NetworkID :: " + networkId);
+
+            SerializerUtils.WriteInt(stream, prefabId, 0, Core.net.maxPrefabs);
+            SerializerUtils.WriteInt(stream, networkId, 0, Core.net.maxNetworkIds);
+            SerializerUtils.WriteInt(stream, owner, 0, Core.net.maxPlayers);
+            SerializerUtils.WriteInt(stream, controller, 0, Core.net.maxPlayers);
+
+            //Debug.Log(BitTools.BitDisplay.BytesToString(stream.Data));
+        }
+
+        public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
+            //Debug.Log(BitTools.BitDisplay.BytesToString(stream.Data));
+            Debug.Log("EntityDestroy.Deserialize");
+            //Debug.Log("MessageCode.EntityUpdate.Deserialize");
+            //read the entity header
+            int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
+            int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
+            int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            int controller = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+
+            //pass it down to the Behaviour to process further
+            //Core.net.GetPrefabNetworkGameObject(prefabId).Deserialize(stream, prefabId, networkId, owner, controller);
+
+            //Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller);
+            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);
 
         }
 
