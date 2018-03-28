@@ -2,7 +2,7 @@
 
 Still super WIP.
 
-I wanted something slightly higher level than using the SendP2PPacket method in steamworks so I made this. It is connection based, messages are bitpacked to save bandwidth, and has a modular system to add new message types (along with how to serialize/deserialize each messsage and what to do with it when received).
+I wanted something slightly higher level than using the SendP2PPacket method in steamworks so I made this for a prototype I'm working on. Wanting to make a distributed authority co-op adventure game. Has to be able to work with mods, has to be able to migrate entities smoothly, and has to be able to run without a central authority/server.  I'm trying to keep the networking system seperate from my prototype-specific stuff, but some features go pretty deep. 
 
 All the good stuff is in NetworkManager.cs, methods called via Core.net or NetworkManager.instance
 
