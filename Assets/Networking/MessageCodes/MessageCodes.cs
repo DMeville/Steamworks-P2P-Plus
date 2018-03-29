@@ -282,7 +282,6 @@ namespace MessageCode {
 
         public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
             //Debug.Log(BitTools.BitDisplay.BytesToString(stream.Data));
-            Debug.Log("EntityDestroy.Deserialize");
             //Debug.Log("MessageCode.EntityUpdate.Deserialize");
             //read the entity header
             int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
@@ -311,6 +310,132 @@ namespace MessageCode {
             float p = 1f;
 
             return p;
+        }
+    }
+
+    public class EntityScopeRequest {
+        public static void Process(ulong sender, params object[] args) {
+            //Debug.Log("On Rec Connect Req Response");
+            //Core.net.OnConnectRequestResponse(sender, (int)args[0], (int)args[1]);
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+
+            NetworkEntity e = Core.net.GetEntity(owner, networkId);
+            bool canDestroy = false;
+            if(e != null) {
+                //can player "sender", destroy entity because it's outside of their scope?
+                //or should they keep it alive because this entity just doesn't have data to send?
+                float p = e.Priority(sender);
+                if(p <= 0f) {
+                    canDestroy = true;
+                }
+            } else {
+                //entity is null, so I guess?
+                canDestroy = true;
+            }
+
+            Core.net.QueueMessage(sender, Core.net.GetMessageCode("EntityScopeResponse"), prefabId, networkId, owner, controller, canDestroy);
+        }
+
+        //
+        public static void Serialize(ulong receiver, ByteStream stream, params object[] args) {
+
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+
+            //Debug.Log("NetworkID :: " + networkId);
+            SerializerUtils.WriteInt(stream, prefabId, 0, Core.net.maxPrefabs);
+            SerializerUtils.WriteInt(stream, networkId, 0, Core.net.maxNetworkIds);
+            SerializerUtils.WriteInt(stream, owner, 0, Core.net.maxPlayers);
+            SerializerUtils.WriteInt(stream, controller, 0, Core.net.maxPlayers);
+        }
+
+        public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
+
+            int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
+            int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
+            int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            int controller = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+
+            //no need for a null check, can't have a deserializer without a processor.
+            //I mean, you can, but it wouldn't do anything with the data you just received
+            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);
+        }
+
+        public static int Peek(params object[] args) {
+            int s = 0;
+            s += MessageCode.Internal.PeekEntityHeader(); //
+            return s;
+        }
+
+        //I guess we use normal priority here because we want to make sure this goes
+        //to clients who are not scoped in anymore...
+        public static float Priority(ulong receiver, params object[] args) {
+            return 1f; 
+        }
+    }
+
+    public class EntityScopeResponse {
+        public static void Process(ulong sender, params object[] args) {
+            //Debug.Log("On Rec Connect Req Response");
+            //Core.net.OnConnectRequestResponse(sender, (int)args[0], (int)args[1]);
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+            bool canDestroy = (bool)args[4];
+
+            NetworkEntity e = Core.net.GetEntity(owner, networkId);
+            
+            if(e != null && canDestroy) {
+                e.DestroyInternal();
+            }
+        }
+
+        //
+        public static void Serialize(ulong receiver, ByteStream stream, params object[] args) {
+
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+            bool canDestroy = (bool)args[4];
+
+            //Debug.Log("NetworkID :: " + networkId);
+            SerializerUtils.WriteInt(stream, prefabId, 0, Core.net.maxPrefabs);
+            SerializerUtils.WriteInt(stream, networkId, 0, Core.net.maxNetworkIds);
+            SerializerUtils.WriteInt(stream, owner, 0, Core.net.maxPlayers);
+            SerializerUtils.WriteInt(stream, controller, 0, Core.net.maxPlayers);
+            SerializerUtils.WriteBool(stream, canDestroy);
+        }
+
+        public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
+
+            int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
+            int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
+            int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            int controller = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            bool canDestroy = SerializerUtils.ReadBool(stream);
+            //no need for a null check, can't have a deserializer without a processor.
+            //I mean, you can, but it wouldn't do anything with the data you just received
+            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller, canDestroy);
+        }
+
+        public static int Peek(params object[] args) {
+            int s = 0;
+            s += MessageCode.Internal.PeekEntityHeader();
+            s += SerializerUtils.RequiredBitsBool();
+            return s;
+        }
+
+        //I guess we use normal priority here because we want to make sure this goes
+        //to clients who are not scoped in anymore...
+        public static float Priority(ulong receiver, params object[] args) {
+            return 1f;
         }
     }
 

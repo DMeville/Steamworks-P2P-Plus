@@ -15,6 +15,11 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     public bool isHidden = false;
     public bool isPendingDestroy = false;
 
+    public int entityStatusRequestedCount = 0; //how many times have you asked the owner
+    public float entityDestroyTimeout = 10f;//
+    public float lastStateUpdateRecTime = 0f;
+   
+
     public Dictionary<ulong, NetworkMessage> queuedMessage = new Dictionary<ulong, NetworkMessage>();
     //so we can update it or delete it if it's a destroy or something
     //ulong is steamId, as we can have have one networkmessage per connection queue 
@@ -37,7 +42,9 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     /// use this to set initial state data, spawn position, etc.  Any data you set here, will be used in the first 
     /// state udpate (if you're the server)
     /// </summary>
-    public abstract void OnSpawn();
+    public virtual void OnSpawn(params object[] args) {
+        lastStateUpdateRecTime = Time.realtimeSinceStartup;
+    }
 
     public abstract void OnNetworkSend();
 
@@ -52,13 +59,16 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     //they will cause errors because they will be the prefab values, NOT the entity values
     public abstract void Deserialize(ByteStream stream, int prefabId, int networkId, int owner, int controller);
 
-    public abstract void OnEntityUpdate(params object[] args);
+    public virtual void OnEntityUpdate(params object[] args) {
+        lastStateUpdateRecTime = Time.realtimeSinceStartup;
+    }
 
     //this is queued to all connections, but sometimes removed before they get sent out (priority sorted)
     public void QueueEntityUpdate() {
         foreach(var k in Core.net.connections) {
-            if(queuedMessage[k.Key] == null) {
-                Core.net.QueueEntityMessage("EntityUpdate", this, this.prefabId, this.networkId, this.owner, this.controller);
+            if(queuedMessage[k.Key] == null) { //check if this entity already has a message queued to this connection
+                bool r = Core.net.QueueEntityMessage(k.Key, "EntityUpdate", this, this.prefabId, this.networkId, this.owner, this.controller);
+                Debug.Log("Queued Entity.Update");
             } else {
                 //don't requeue it, there's still one in the queue waiting to go out.
                 //queued state updates serializes the most up to date data right before send
@@ -73,8 +83,8 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     //sends an update to the owner asking to destroy it.
     //also hides the entity locally so it stops doing stuff because we think it's dead
     public void Destroy() {
-        Debug.Log("Entity.Destroy(): " + isOwner());
         //process this even if we're frozen
+        bool s = true;
         if(isOwner()) {
             //check to see if we have any queued entity messages waiting to go out
             //if we do, update them.
@@ -82,32 +92,46 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
 
             //we can just call QueueEntityMessage as it overwrites any pending messages
             //to EVERYONE
-            Core.net.QueueEntityMessage("EntityDestroy", this, this.prefabId, this.networkId, this.owner, this.controller);
+            s = Core.net.QueueEntityMessage("EntityDestroy", this, this.prefabId, this.networkId, this.owner, this.controller);
             //mark for destroy at the end of this frame/lateupdate
-            Hide();
-            isPendingDestroy = true; // waiting until all our destroy messages go out
+            if(s) isPendingDestroy = true; // waiting until all our destroy messages go out
             //DestroyInternal(); can't call this until the message has been sent, otherwise the entity is null already
         } else if(isController()) {
             //we only want to send a request to the owner
             ulong owner = Core.net.GetConnection(this.owner).steamID;
-            Core.net.QueueEntityMessage(owner, "EntityDestroyRequest", this, this.prefabId, this.networkId, this.owner, this.controller);
-            Hide(); //hide it, no more outgoing or incoming messages
+            s = Core.net.QueueEntityMessage(owner, "EntityDestroyRequest", this, this.prefabId, this.networkId, this.owner, this.controller);
         } else {
             ulong controller = Core.net.GetConnection(this.controller).steamID;
             //we are not the owner or controller, so send a request to the controller
-            Core.net.QueueEntityMessage(controller, "EntityDestroyRequest", this, this.prefabId, this.networkId, this.owner, this.controller);
+            s = Core.net.QueueEntityMessage(controller, "EntityDestroyRequest", this, this.prefabId, this.networkId, this.owner, this.controller);
+        }
+
+        if(s) {
             Hide();
+        } else {
+            Invoke("Destroy", 1f); //try again in a second so even if our message queue was full, the destroy should go out eventually
         }
     }
 
-   public void TryDestroyInternal() {
-        Debug.Log("TryDestroyInternal");
-        DestroyInternal();
+    //only destroy the object if all destroy messages have been broadcast to all players
+    //or at least all the players who care about the message currently (if they don't care about the message they've already deleted the object)
+    
+    public void TryDestroyInternal() {
+
+        bool allDone = true;
+
+        foreach(var m in queuedMessage) {
+            if(m.Value != null) {
+                allDone = false;
+            }
+        }
+        if(allDone) DestroyInternal();
     }
 
+    //silently destroys.  Hook into hide to show explosion on destroy or something.
+    //if you hook into this, you will get an explosion when an entity falls out of scope and you don't want that
     public virtual void DestroyInternal() {
         //when you recieve the actual destroy
-        Debug.Log("Entity.DestroyInternal");
         Core.net.NetworkSendEvent -= OnNetworkSend;
         Destroy(this.gameObject);
     }
@@ -128,7 +152,28 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
 
 
     public virtual void Update() {
+        if(!isOwner() && !isController()) {
+            //how long has it been since you received a state update?
+            float ts = Time.realtimeSinceStartup - lastStateUpdateRecTime;
+            if(ts > entityDestroyTimeout) {
+                //ask the controller what's going on.
+                if(entityStatusRequestedCount > 3) {
+                    //just destroy me
+                    DestroyInternal();
+                } else {
+                    lastStateUpdateRecTime = Time.realtimeSinceStartup;
+                    entityStatusRequestedCount++;
+                    RequestEntityStatus(); //what if we never get a response? after x tries, just destroy it?
+                }
+            }
+        }
     //    SimulateOwner();
+    }
+
+    //sends a message to the controller asking if we can destroy this entity, or if we should
+    public void RequestEntityStatus() {
+        //Core.net.QueueMessage)
+        Core.net.QueueMessage(Core.net.GetConnection(this.controller).steamID, Core.net.GetMessageCode("EntityScopeRequest"), this.prefabId, this.networkId, this.owner, this.controller);
     }
 
     public virtual void LateUpdate() {

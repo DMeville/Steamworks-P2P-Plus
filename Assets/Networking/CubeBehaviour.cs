@@ -27,6 +27,7 @@ public class CubeBehaviour : NetworkEntity {
 
     public float targetFloat = 0f;
     public int targetInt = 0;
+    public bool p = false;
 
     public void Awake() {
         rb = this.GetComponent<Rigidbody>();
@@ -38,6 +39,18 @@ public class CubeBehaviour : NetworkEntity {
         if(Input.GetKeyDown(KeyCode.Space)) {
             Destroy();
         }
+
+        if(Input.GetKeyDown(KeyCode.A)) {
+            p = !p;
+        }
+
+        //if we don't care about this object anymore, because we're too far away and have stopped getting state updates for it
+        //just destroy it now.
+        //what if we're sitting on the threshold, will we get spawn/despawn/spawn/despawn?
+        //if(!isOwner() && Priority(Core.net.me.steamID) <= 0f) {
+        //    Hide();
+        //    DestroyInternal(); 
+        //}
 
         if(!isOwner()) {
 
@@ -51,7 +64,7 @@ public class CubeBehaviour : NetworkEntity {
 
         } else {
 
-            deg += Time.deltaTime * rotSpeed;
+            //deg += Time.deltaTime * rotSpeed;
             if(deg >= 360f) {
                 deg = 0;
                 targetPos = new Vector3(Random.Range(-3f, 3f), Random.Range(0f, 1f), Random.Range(-3f, 3f));
@@ -70,16 +83,26 @@ public class CubeBehaviour : NetworkEntity {
             //this.transform.position = new Vector3(x, 0f, z);
         }
     }
-    
+
 
     //how do I do interpolation if state updates are not coming at a regular interval?
     //If I haven't got an update for more than (NetworkSim*6)ms, do I just snap?
     //Otherwise if I have got an update.  20/60 network rate is one packet every 50 ms.  
-    
 
 
-    public override void OnSpawn() {
+
+    public override void OnSpawn(params object[] args) {
+        base.Update();
         //if you own it, subscribe to the NetworkSendEvent
+        if(args.Length != 0) {
+            //are we spawing because it entered scope? if so, we have a state
+            //otherwise we do not
+            this.transform.position = new Vector3((float)args[0], (float)args[1], (float)args[2]);
+            this.transform.rotation = (Quaternion)args[3];
+        } else {
+            //normal spawn, no state yet?
+        }
+
         if(isOwner()) {
             Core.net.NetworkSendEvent += OnNetworkSend;
         }
@@ -118,10 +141,21 @@ public class CubeBehaviour : NetworkEntity {
     }
 
     public override float Priority(ulong sendTo) {
+        float r = 0f;
+        if(p) r = 0f;
+        else r = 1f;
+
+        if(this.transform.position.x > 2f) {
+            r = 0f;
+        } else {
+            r = 1f;
+        }
+
+        Debug.Log("Entity.Priority: " + r);
         //could check the connections[sendTo], get their player position and find out the distance between them
         //and this object.  And scale priority based on that, so it's lower the further away they are
         //requires some player metatdata to be accessed from *somewhere* though...
-        return 1f;
+        return r;        //return 0f;
     }
 
     //bolt 3 float properties compressed the same (18 bits each = 54 bits)

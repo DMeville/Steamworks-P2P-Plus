@@ -10,7 +10,7 @@ using System;
 using BitTools;
 using ByteStream = UdpKit.UdpStream;
 
-public class NetworkManager:MonoBehaviour {
+public class NetworkManager:SerializedMonoBehaviour {
     public static NetworkManager instance;
 
     public int networkSimulationRate = 20; //# of packets to send per second (at 60fps)
@@ -20,8 +20,10 @@ public class NetworkManager:MonoBehaviour {
 
     public int maxPlayers = 255; //connected at once. should be a power of 2 (-1). 2, 4, 8, 16, 32, 64, 128, 256.  etc.  Used for packing data, so leaving this at 255 when you only connect 4 players would be a huge waste.  don't  do that.
     public int maxMessageTypes = 255; //does not include states.  States use maxPrefabs
+    public int maxMessagesQueued = 255; //how many messages can be queued until we stop (so things don't spiral out too badly)
     public int maxPrefabs = 4095; //[0-maxPrefab] range for bitpacking.  The fewer prefabs we have, the better we can pack.  255 fits in 8 bits.  These are prefabs you can spawn over the network.
     public int maxNetworkIds = 4095; // sent over the net as (connectionNum) (networkId). since every client can spawn prefabs, this will ensure no overlap while not having to sync lists, or go through one player to ensure no overlap. 
+    
     //public int maxStates = 255; //separate state defintions.  Need to do lookups so we know how to read/write custom state data.
     private int networkIds = 0;
     public int packetSize = 1024 * 2; //(udpkit default, dunno)
@@ -126,6 +128,19 @@ public class NetworkManager:MonoBehaviour {
             MessageCode.EntityDestroy.Deserialize,
             MessageCode.EntityDestroy.Process);
 
+        RegisterMessageType("EntityScopeRequest", //This entity that I do not own, can I destroy it?
+            MessageCode.EntityScopeRequest.Peek,
+            MessageCode.EntityScopeRequest.Priority,
+            MessageCode.EntityScopeRequest.Serialize,
+            MessageCode.EntityScopeRequest.Deserialize,
+            MessageCode.EntityScopeRequest.Process);
+
+        RegisterMessageType("EntityScopeResponse", //This entity that I do not own, can I destroy it?
+            MessageCode.EntityScopeResponse.Peek,
+            MessageCode.EntityScopeResponse.Priority,
+            MessageCode.EntityScopeResponse.Serialize,
+            MessageCode.EntityScopeResponse.Deserialize,
+            MessageCode.EntityScopeResponse.Process);
 
         for(int i = 0; i < registerPrefabsOnStart.Count; i++) {
             RegisterPrefab(registerPrefabsOnStart[i].gameObject.name, registerPrefabsOnStart[i]);
@@ -234,27 +249,46 @@ public class NetworkManager:MonoBehaviour {
     }
 
     //sends an entity event to all connections
-    public void QueueEntityMessage(string msgCode, NetworkEntity entity, params object[] args) {
-        QueueEntityMessage(GetMessageCode(msgCode), entity, args);
+    //returns true if the message was queued, false if the queue was full
+    public bool QueueEntityMessage(string msgCode, NetworkEntity entity, params object[] args) {
+        return QueueEntityMessage(GetMessageCode(msgCode), entity, args);
     }
 
-    public void QueueEntityMessage(int msgCode, NetworkEntity entity, params object[] args) {
+    public bool QueueEntityMessage(int msgCode, NetworkEntity entity, params object[] args) {
+        //only queue the message if all connections have room in their queue for it
+        bool allHaveRoom = true;
+        foreach(SteamConnection c in connections.Values) {
+            if(c.messageQueue.Count >= maxMessagesQueued) {
+                allHaveRoom = false;
+                break;
+            }
+        }
+
+        if(!allHaveRoom) return false;
         foreach(SteamConnection s in connections.Values) {
             QueueEntityMessage(s.steamID, msgCode, entity, args);
         }
+        return true;
     }
-    public void QueueEntityMessage(ulong sendTo, string msgCode, NetworkEntity entity, params object[] args) {
-        QueueEntityMessage(sendTo, GetMessageCode(msgCode), entity, args);
+    public bool QueueEntityMessage(ulong sendTo, string msgCode, NetworkEntity entity, params object[] args) {
+        return QueueEntityMessage(sendTo, GetMessageCode(msgCode), entity, args);
     }
 
-    public void QueueEntityMessage(ulong sendTo, int msgCode, NetworkEntity entity, params object[] args) {
+    public bool QueueEntityMessage(ulong sendTo, int msgCode, NetworkEntity entity, params object[] args) {
         SteamConnection c = GetConnection(sendTo);
         if(c != null) {
-            NetworkMessage msg = new NetworkMessage(msgCode, args);
-            msg.entity = entity;
-            msg.isEntityMsg = true;
-            c.messageQueue.Add(msg);
-            entity.queuedMessage[sendTo] = msg; //straight overwrites, so make sure you handle this interally if it's not null
+            if(c.messageQueue.Count < maxMessagesQueued) {
+                NetworkMessage msg = new NetworkMessage(msgCode, args);
+                msg.entity = entity;
+                msg.isEntityMsg = true;
+                c.messageQueue.Add(msg);
+                entity.queuedMessage[sendTo] = msg; //straight overwrites, so make sure you handle this interally if it's not null
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            return false;
         }
     }
 
@@ -344,7 +378,7 @@ public class NetworkManager:MonoBehaviour {
         return g;
     }
 
-    public GameObject SpawnPrefabInternal(int prefabId, int networkId, int owner, int controller) {
+    public GameObject SpawnPrefabInternal(int prefabId, int networkId, int owner, int controller, params object[] args) {
         Debug.Log("SpawnPrefabInternal : " + prefabId + " :" + networkId + " : " + owner + " : " + controller);
 
         if(GetConnection(owner) == null) {
@@ -361,7 +395,7 @@ public class NetworkManager:MonoBehaviour {
             ngo.networkId = networkId;
             ngo.owner = owner;
             ngo.controller = controller;
-            ngo.OnSpawn();
+            ngo.OnSpawn(args);
         }
 
         //add it to the owners entity list
@@ -380,7 +414,7 @@ public class NetworkManager:MonoBehaviour {
         return c;
     }
 
-    public bool IsEntityMsg(int msgCode) {
+    public bool IsEntityUpdateMsg(int msgCode) {
         return /*msgCode == GetMessageCode("SpawnPrefab") ||*/ msgCode == GetMessageCode("EntityUpdate");
     }
 
@@ -406,7 +440,7 @@ public class NetworkManager:MonoBehaviour {
             //anyways, since we already read from the stream, we can just discard whatever we read
             //without issues to the next messages we read.
             //OR we should spawn it, then pass it the data
-            entity = Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller).GetComponent<NetworkEntity>();
+            entity = Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller, args).GetComponent<NetworkEntity>();
             entity.OnEntityUpdate(args);
         }
         //don't need to process, just call onEntityUpdate with our new values
@@ -467,7 +501,6 @@ public class NetworkManager:MonoBehaviour {
 
                 //sort it by priority, with higher priority values first, lower last.
                 sc.messageQueue = sc.messageQueue.OrderByDescending(p => p.priority + p.skipped).ToList();
-            
                 for(int i = 0; i < sc.messageQueue.Count; i++) {
                     //Debug.Log("queue count: " + sc.messageQueue.Count);
                     //Debug.Log("message: " + i);
@@ -480,7 +513,12 @@ public class NetworkManager:MonoBehaviour {
                         //break; //ZERO room left m
                     } else {
 
-                        if(m.priority == 0f) { //if the message has a priority of 0 we dont want to send the message 
+                        if(m.priority == 0f) {
+                            if(m.isEntityMsg) {
+                                m.entity.queuedMessage[sc.steamID] = null; 
+                            }
+                            
+                            //if the message has a priority of 0 we dont want to send the message 
                             sc.messageQueue.RemoveAt(i); //this will happen when we queue something to everyone, but 
                             i--;                        //some players are too far away to care about the message (in a different map, etc)
                             continue;                   //so it just gets discarded. 
@@ -497,7 +535,7 @@ public class NetworkManager:MonoBehaviour {
                         if(MessagePeekers[m.msgCode] != null) { //if it's null we don't have any data to send, just the msgCode (like for a keep alive)
                             msgSize += Core.net.MessagePeekers[m.msgCode](m.args);
 
-                            if(IsEntityMsg(m.msgCode)) {
+                            if(m.msgCode == GetMessageCode("EntityUpdate")) {
                                 int entityDataSize = m.entity.Peek();
                                 msgSize += entityDataSize; //entity state msgSize
                                 //Debug.Log("msgSize: ["+m.msgCode+"]: " + msgSize);
@@ -505,6 +543,7 @@ public class NetworkManager:MonoBehaviour {
                                 if(entityDataSize == 0) {
                                     //just don't send it, no point wasting 8 bits with an empty message code.
                                     //Debug.Log("removed");
+                                    m.entity.queuedMessage[sc.steamID] = null;
                                     sc.messageQueue.RemoveAt(i);
                                     i--;
                                     continue;
@@ -519,14 +558,13 @@ public class NetworkManager:MonoBehaviour {
                             if(MessageSerializers[m.msgCode] != null) {
                                 Core.net.MessageSerializers[m.msgCode](sc.steamID, writeStream, m.args); //write the rest of the data
 
-                                if(IsEntityMsg(m.msgCode)) {
+                                if(m.msgCode == GetMessageCode("EntityUpdate")) {
                                     m.entity.queuedMessage[sc.steamID] = null; //clear this so they can queue the next message
-                                    if(m.msgCode == GetMessageCode("EntityUpdate")) {
-                                        m.entity.Serialize(writeStream);
-                                    } else if(m.msgCode == GetMessageCode("EntityDestroy")) {
-                                        m.entity.TryDestroyInternal(); //we can only destroy the entity after the message has been sent. 
-                                        //If we try to destroy it earlier, the entity is already null when trying to send and things fail
-                                    }
+                                    m.entity.Serialize(writeStream);
+                                } else if(m.msgCode == GetMessageCode("EntityDestroy")) {
+                                    m.entity.queuedMessage[sc.steamID] = null;
+                                    m.entity.TryDestroyInternal(); //we can only destroy the entity after the message has been sent. 
+                                                                   //If we try to destroy it earlier, the entity is already null when trying to send and things fail
                                 }
                             }
                             //Debug.Log("Wrote: " + msgSize + " : new bit position: " + writeStream.Position);
@@ -563,7 +601,7 @@ public class NetworkManager:MonoBehaviour {
         if(connections.ContainsKey(steamID)) {
             connections[steamID].timeSinceLastMsg = 0f;
         } //otherwise we just haven't established the connection yet (as this must be a connect request message)
-        //Debug.Log("SendP2PData: " + length);
+        Debug.Log("SendP2PData: " + length);
         return Client.Instance.Networking.SendP2PPacket(steamID, data, data.Length, sendType, channel);
     }
 
