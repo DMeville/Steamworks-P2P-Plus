@@ -705,10 +705,120 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 89ded6e347ab8de439c21b7b653a7ec8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  serializationData:
+    SerializedFormat: 2
+    SerializedBytes: 
+    ReferencedUnityObjects: []
+    SerializedBytesString: 
+    Prefab: {fileID: 0}
+    PrefabModificationsReferencedUnityObjects: []
+    PrefabModifications: []
+    SerializationNodes:
+    - Name: connections
+      Entry: 7
+      Data: 0|System.Collections.Generic.Dictionary`2[[System.UInt64, mscorlib],[SteamConnection,
+        Assembly-CSharp]], mscorlib
+    - Name: comparer
+      Entry: 7
+      Data: 1|System.Collections.Generic.GenericEqualityComparer`1[[System.UInt64,
+        mscorlib]], mscorlib
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: readStream
+      Entry: 7
+      Data: 2|UdpKit.UdpStream, Assembly-CSharp
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: writeStream
+      Entry: 7
+      Data: 3|UdpKit.UdpStream, Assembly-CSharp
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: MessagePriorityCalculators
+      Entry: 7
+      Data: 4|System.Collections.Generic.List`1[[NetworkManager+MessagePriorityCalculator,
+        Assembly-CSharp]], mscorlib
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: MessageSerializers
+      Entry: 7
+      Data: 5|System.Collections.Generic.List`1[[NetworkManager+MessageSerializer,
+        Assembly-CSharp]], mscorlib
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: MessageDeserializers
+      Entry: 7
+      Data: 6|System.Collections.Generic.List`1[[NetworkManager+MessageDeserializer,
+        Assembly-CSharp]], mscorlib
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: MessageProcessors
+      Entry: 7
+      Data: 7|System.Collections.Generic.List`1[[NetworkManager+MessageProcessor,
+        Assembly-CSharp]], mscorlib
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: MessagePeekers
+      Entry: 7
+      Data: 8|System.Collections.Generic.List`1[[NetworkManager+MessagePeeker, Assembly-CSharp]],
+        mscorlib
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: NetworkSendEvent
+      Entry: 6
+      Data: 
   networkSimulationRate: 20
   keepAliveTimer: 15
   maxPlayers: 15
-  maxMessageTypes: 15
+  maxMessageTypes: 31
+  maxMessagesQueued: 255
   maxPrefabs: 255
   maxNetworkIds: 4095
   packetSize: 2048

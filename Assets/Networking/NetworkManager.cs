@@ -128,19 +128,41 @@ public class NetworkManager:SerializedMonoBehaviour {
             MessageCode.EntityDestroy.Deserialize,
             MessageCode.EntityDestroy.Process);
 
-        RegisterMessageType("EntityScopeRequest", //This entity that I do not own, can I destroy it?
-            MessageCode.EntityScopeRequest.Peek,
-            MessageCode.EntityScopeRequest.Priority,
+        RegisterMessageType("EntityScopeRequest", //asking the controller "Do I care about this still? 
+            MessageCode.EntityScopeRequest.Peek, //I haven't got an update in a while.  is there just nothing to send me?
+            MessageCode.EntityScopeRequest.Priority, //or have you deleted this object, and can I now delete it too?
             MessageCode.EntityScopeRequest.Serialize,
             MessageCode.EntityScopeRequest.Deserialize,
             MessageCode.EntityScopeRequest.Process);
 
-        RegisterMessageType("EntityScopeResponse", //This entity that I do not own, can I destroy it?
+        RegisterMessageType("EntityScopeResponse", //Yes you can delete it, or no, don't delete, there is just no data to send but this entity should stay alive
             MessageCode.EntityScopeResponse.Peek,
             MessageCode.EntityScopeResponse.Priority,
             MessageCode.EntityScopeResponse.Serialize,
             MessageCode.EntityScopeResponse.Deserialize,
             MessageCode.EntityScopeResponse.Process);
+
+        RegisterMessageType("EntityChangeOwner", //TODO
+            MessageCode.EntityChangeOwner.Peek,
+            MessageCode.EntityChangeOwner.Priority,
+            MessageCode.EntityChangeOwner.Serialize,
+            MessageCode.EntityChangeOwner.Deserialize,
+            MessageCode.EntityChangeOwner.Process);
+
+        RegisterMessageType("EntityControlRequest", //9) I'm trying to take control of this entity. 
+            MessageCode.EntityControlRequest.Peek,
+            MessageCode.EntityControlRequest.Priority,
+            MessageCode.EntityControlRequest.Serialize,
+            MessageCode.EntityControlRequest.Deserialize,
+            MessageCode.EntityControlRequest.Process);
+
+        RegisterMessageType("EntityControlResponse", //10) I'm trying to take control of this entity. 
+            MessageCode.EntityControlResponse.Peek,
+            MessageCode.EntityControlResponse.Priority,
+            MessageCode.EntityControlResponse.Serialize,
+            MessageCode.EntityControlResponse.Deserialize,
+            MessageCode.EntityControlResponse.Process);
+        
 
         for(int i = 0; i < registerPrefabsOnStart.Count; i++) {
             RegisterPrefab(registerPrefabsOnStart[i].gameObject.name, registerPrefabsOnStart[i]);
@@ -193,6 +215,7 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     public int GetMessageCode(string messageName) {
         if(MessageCodes.Contains(messageName)) {
+            Debug.Log("MessageCode [" + messageName + "] : [" + MessageCodes.IndexOf(messageName) + "]");
             return MessageCodes.IndexOf(messageName);
         }
         throw new Exception("Message with name [" + messageName + "] does not exist");
@@ -435,6 +458,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         entity = GetEntity(owner, networkId);
         if(entity != null) {
             entity.OnEntityUpdate(args);
+            entity.controller = controller;
         } else {
             //this entity doesn't exist for some reason. Maybe it has already been destroyed locally
             //anyways, since we already read from the stream, we can just discard whatever we read
@@ -442,6 +466,7 @@ public class NetworkManager:SerializedMonoBehaviour {
             //OR we should spawn it, then pass it the data
             entity = Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller, args).GetComponent<NetworkEntity>();
             entity.OnEntityUpdate(args);
+            entity.controller = controller;
         }
         //don't need to process, just call onEntityUpdate with our new values
         //Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);

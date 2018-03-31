@@ -26,6 +26,20 @@ namespace MessageCode {
         }
     }
 
+    public class TestMessage {
+        public static void Process(ulong sender, params object[] args) {
+            Debug.Log("Received message with code: " + args[0]);
+        }
+
+        public static void Serialize(ulong receiver, ByteStream stream, params object[] args) { }
+
+        public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {Core.net.MessageProcessors[msgCode](sender, msgCode);}
+
+        public static int Peek(params object[] args) { return 0; }
+
+        public static float Priority(ulong receiver, params object[] args) { return 1f; }
+    }
+
     //copy and paste this template when creating a new message.
     public class Template {
         public static void Process(ulong sender, params object[] args) {
@@ -165,7 +179,7 @@ namespace MessageCode {
             int owner = (int)args[2];
             int controller = (int)args[3];
             //Debug.Log("SpawnPrefab::Process: " + prefabId);
-            Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller);
+            //Core.net.SpawnPrefabInternal(prefabId, networkId, owner, controller);
         }
 
         //
@@ -438,5 +452,192 @@ namespace MessageCode {
             return 1f;
         }
     }
+
+    public class EntityChangeOwner {
+        public static void Process(ulong sender, params object[] args) {
+            //Debug.Log("On Rec Connect Req Response");
+            //Core.net.OnConnectRequestResponse(sender, (int)args[0], (int)args[1]);
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+            int newOwner = (int)args[4];
+
+            NetworkEntity e = Core.net.GetEntity(owner, networkId);
+
+            if(e != null) {
+                e.OnChangeOwner(newOwner);
+            }
+        }
+
+        //
+        public static void Serialize(ulong receiver, ByteStream stream, params object[] args) {
+
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+            int newOwner = (int)args[4];
+
+            //Debug.Log("NetworkID :: " + networkId);
+            SerializerUtils.WriteInt(stream, prefabId, 0, Core.net.maxPrefabs);
+            SerializerUtils.WriteInt(stream, networkId, 0, Core.net.maxNetworkIds);
+            SerializerUtils.WriteInt(stream, owner, 0, Core.net.maxPlayers);
+            SerializerUtils.WriteInt(stream, controller, 0, Core.net.maxPlayers);
+            SerializerUtils.WriteInt(stream, newOwner, 0, Core.net.maxPlayers);
+        }
+
+        public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
+
+            int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
+            int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
+            int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            int controller = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            int newOwner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            //no need for a null check, can't have a deserializer without a processor.
+            //I mean, you can, but it wouldn't do anything with the data you just received
+            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller, newOwner);
+        }
+
+        public static int Peek(params object[] args) {
+            int s = 0;
+            s += MessageCode.Internal.PeekEntityHeader();
+            s += SerializerUtils.RequiredBitsInt(0, Core.net.maxPlayers);
+            return s;
+        }
+
+        //I guess we use normal priority here because we want to make sure this goes
+        //to clients who are not scoped in anymore...
+        public static float Priority(ulong receiver, params object[] args) {
+            return 1f;
+        }
+    }
+
+    public class EntityControlRequest {
+        public static void Process(ulong sender, params object[] args) {
+            Debug.Log("EntityControlRequest.Process");
+            //Core.net.OnConnectRequestResponse(sender, (int)args[0], (int)args[1]);
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+
+            NetworkEntity e = Core.net.GetEntity(owner, networkId);
+            SteamConnection c = Core.net.GetConnection(sender);
+
+            if(e != null && c != null) {
+                e.controller = c.connectionIndex;
+                //this entity will stop sending updates...
+                //sinc it is no longer the controller...
+                //BUT what if it already has an event queued that's just lower priority?
+                //it will send it out, and maybe that's ok, since the new controller will
+                //send out them every update, so eventually anything buffered would be overwritten
+                //we should still just remove any events though.
+                //what if it's a destroy that's queued?
+                //oh well? id
+                Debug.Log("------ QueueMessage::EntityControlResponse");
+                Core.net.QueueMessage(sender, Core.net.GetMessageCode("EntityControlResponse"), prefabId, networkId, owner, e.controller);
+            }
+        }
+
+        //
+        public static void Serialize(ulong receiver, ByteStream stream, params object[] args) {
+
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+
+            //Debug.Log("NetworkID :: " + networkId);
+            SerializerUtils.WriteInt(stream, prefabId, 0, Core.net.maxPrefabs);
+            SerializerUtils.WriteInt(stream, networkId, 0, Core.net.maxNetworkIds);
+            SerializerUtils.WriteInt(stream, owner, 0, Core.net.maxPlayers);
+            SerializerUtils.WriteInt(stream, controller, 0, Core.net.maxPlayers);
+        }
+
+        public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
+            Debug.Log("EntityControlRequest.Deserialize");
+            int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
+            int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
+            int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            int controller = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            //no need for a null check, can't have a deserializer without a processor.
+            //I mean, you can, but it wouldn't do anything with the data you just received
+            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);
+        }
+
+        public static int Peek(params object[] args) {
+            int s = 0;
+            s += MessageCode.Internal.PeekEntityHeader();
+            return s;
+        }
+
+        //I guess we use normal priority here because we want to make sure this goes
+        //to clients who are not scoped in anymore...
+        public static float Priority(ulong receiver, params object[] args) {
+            return 1f;
+        }
+
+    }
+
+    public class EntityControlResponse {
+        public static void Process(ulong sender, params object[] args) {
+            //Debug.Log("On Rec Connect Req Response");
+            //Core.net.OnConnectRequestResponse(sender, (int)args[0], (int)args[1]);
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+
+            NetworkEntity e = Core.net.GetEntity(owner, networkId);
+            SteamConnection c = Core.net.GetConnection(sender);
+
+            //you have control now according to the old controller
+            if(e != null && c != null) {
+                e.isPredictingControl = false;
+                e.controller = controller;
+            }
+        }
+
+        //
+        public static void Serialize(ulong receiver, ByteStream stream, params object[] args) {
+
+            int prefabId = (int)args[0];
+            int networkId = (int)args[1];
+            int owner = (int)args[2];
+            int controller = (int)args[3];
+
+            //Debug.Log("NetworkID :: " + networkId);
+            SerializerUtils.WriteInt(stream, prefabId, 0, Core.net.maxPrefabs);
+            SerializerUtils.WriteInt(stream, networkId, 0, Core.net.maxNetworkIds);
+            SerializerUtils.WriteInt(stream, owner, 0, Core.net.maxPlayers);
+            SerializerUtils.WriteInt(stream, controller, 0, Core.net.maxPlayers);
+        }
+
+        public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
+
+            int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
+            int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
+            int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            int controller = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            //no need for a null check, can't have a deserializer without a processor.
+            //I mean, you can, but it wouldn't do anything with the data you just received
+            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);
+        }
+
+        public static int Peek(params object[] args) {
+            int s = 0;
+            s += MessageCode.Internal.PeekEntityHeader();
+            return s;
+        }
+
+        //I guess we use normal priority here because we want to make sure this goes
+        //to clients who are not scoped in anymore...
+        public static float Priority(ulong receiver, params object[] args) {
+            return 1f;
+        }
+    }
+
+   
 
 }

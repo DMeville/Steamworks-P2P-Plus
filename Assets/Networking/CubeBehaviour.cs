@@ -44,6 +44,25 @@ public class CubeBehaviour : NetworkEntity {
             p = !p;
         }
 
+        if(Input.GetKeyDown(KeyCode.C)) {
+            Debug.Log("trying to take control");
+            if(isController()) {
+                Debug.Log("We are already the controller");
+            } else {
+                TakeControl();
+            }
+        }
+
+        if(isPredictingControl) {
+            SetColor(Color.green);
+        } else {
+            if(controller == 0) {
+                SetColor(Color.red);
+            } else {
+                SetColor(Color.blue);
+            }
+        }
+
         //if we don't care about this object anymore, because we're too far away and have stopped getting state updates for it
         //just destroy it now.
         //what if we're sitting on the threshold, will we get spawn/despawn/spawn/despawn?
@@ -52,8 +71,11 @@ public class CubeBehaviour : NetworkEntity {
         //    DestroyInternal(); 
         //}
 
-        if(!isOwner()) {
+        if(!hasControl()) {//  /should this be controller? it should be controller
 
+            //the issue is we shoudl be storing this every frame, if we're not receiving updates
+            //so that if we ever lose control we will still have something to interp to
+            //not sure where to inject that though
             //update the position with the interpolated version (using our interp time
             this.transform.position = GetInterpolatedPosition(0); //we should come up with a more modular way to store these
                                                                  //what if we want more than one position per state (for whatever reason)
@@ -84,12 +106,12 @@ public class CubeBehaviour : NetworkEntity {
         }
     }
 
+    //
+    
 
-    //how do I do interpolation if state updates are not coming at a regular interval?
-    //If I haven't got an update for more than (NetworkSim*6)ms, do I just snap?
-    //Otherwise if I have got an update.  20/60 network rate is one packet every 50 ms.  
-
-
+    public void SetColor(Color c) {
+        this.GetComponent<Renderer>().material.color = c;
+    }
 
     public override void OnSpawn(params object[] args) {
         base.Update();
@@ -103,22 +125,25 @@ public class CubeBehaviour : NetworkEntity {
             //normal spawn, no state yet?
         }
 
-        if(isOwner()) {
-            Core.net.NetworkSendEvent += OnNetworkSend;
-        }
+        //always 
+        Core.net.NetworkSendEvent += OnNetworkSend;
+        
+    }
+
+    public override void OnChangeOwner(int newOwner) {
+        base.OnChangeOwner(newOwner);
     }
 
     //triggered right before a packet is going out.  This is where you want to
     //queue the state update message
     public override void OnNetworkSend() {
-        if(!isFrozen()) {
+        if(isController()) {
             QueueEntityUpdate();
         }
     }
 
     public override void OnEntityUpdate(params object[] args) {
-        //if(!(bool)args[0]) { //!isSleeping
-        if(isFrozen()) return; //don't want to apply anything if we're frozen (eg, dead or predicted dead)
+        if(!shouldReplicate()) return; //don't want to apply anything if we're frozen (eg, dead or predicted dead)
 
         StorePositionSnapshot(0, (float)args[0], (float)args[1], (float)args[2]);
         StoreRotationSnapshot(0, (Quaternion)args[3]);

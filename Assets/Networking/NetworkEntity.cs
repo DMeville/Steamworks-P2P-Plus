@@ -14,11 +14,12 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
 
     public bool isHidden = false;
     public bool isPendingDestroy = false;
+    public bool isPredictingControl = false; //set to true when we 
 
     public int entityStatusRequestedCount = 0; //how many times have you asked the owner
     public float entityDestroyTimeout = 10f;//
     public float lastStateUpdateRecTime = 0f;
-   
+
 
     public Dictionary<ulong, NetworkMessage> queuedMessage = new Dictionary<ulong, NetworkMessage>();
     //so we can update it or delete it if it's a destroy or something
@@ -59,13 +60,30 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     //they will cause errors because they will be the prefab values, NOT the entity values
     public abstract void Deserialize(ByteStream stream, int prefabId, int networkId, int owner, int controller);
 
+    public virtual void TakeControl() {
+        if(!isController()) { //don't need to ask for control if you're already the controller
+            isPredictingControl = true;
+            //send an event asking to take control
+            ulong cId = Core.net.GetConnection(controller).steamID;
+            Debug.Log("sending entity control request");
+            Core.net.QueueMessage(cId, Core.net.GetMessageCode("EntityControlRequest"), this.prefabId, this.networkId, this.owner, this.controller);
+            //we can now do stuff with hasControl() and this will return true.
+
+        }
+    }
+
     public virtual void OnEntityUpdate(params object[] args) {
         lastStateUpdateRecTime = Time.realtimeSinceStartup;
+        
     }
 
     //this is queued to all connections, but sometimes removed before they get sent out (priority sorted)
     public void QueueEntityUpdate() {
         foreach(var k in Core.net.connections) {
+            if(!queuedMessage.ContainsKey(k.Key)) {
+                queuedMessage[k.Key] = null; //if you don't have this connection in our queuedMessages dict, add it
+            }
+
             if(queuedMessage[k.Key] == null) { //check if this entity already has a message queued to this connection
                 bool r = Core.net.QueueEntityMessage(k.Key, "EntityUpdate", this, this.prefabId, this.networkId, this.owner, this.controller);
                 Debug.Log("Queued Entity.Update");
@@ -115,7 +133,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
 
     //only destroy the object if all destroy messages have been broadcast to all players
     //or at least all the players who care about the message currently (if they don't care about the message they've already deleted the object)
-    
+
     public void TryDestroyInternal() {
 
         bool allDone = true;
@@ -150,6 +168,15 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
         return isHidden || isPendingDestroy;
     }
 
+    /// <summary>
+    /// should we apply state updates we receive, or do we want to ignore them (eg, we're controller or predicting we're the controller)
+    /// or we are frozen/hidden/pendingControl
+    /// </summary>
+    /// <returns></returns>
+    public bool shouldReplicate() {
+        return !isController() || !isFrozen(); //|| isPredictingControl; we don't want to send updates until we're sure we're the owner.
+    }
+
 
     public virtual void Update() {
         if(!isOwner() && !isController()) {
@@ -167,7 +194,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
                 }
             }
         }
-    //    SimulateOwner();
+        //    SimulateOwner();
     }
 
     //sends a message to the controller asking if we can destroy this entity, or if we should
@@ -177,7 +204,35 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     }
 
     public virtual void LateUpdate() {
-      
+
+    }
+
+    public virtual void OnChangeOwner(int newOwner) {
+        if(isOwner()) {
+            //you are currently the owner, so you are sending this message, you need to apply the change first
+            //or should we apply the change when the event goes out? What if it never does...?
+            //if we do it instantly we have "local prediction" but we won't receieve any updates for it..
+            //additionally, what if we have a state udpate already queued that goes out AFTER?
+            //what if we queue a destroy while this is destroyed on this end, but not the other end?
+            //this event needs to go to everyone saying "hey, this player is the new owner"
+            //or at least people scoped into this entity
+            //the change request only needs to go to the current owner though.
+
+            //we can't predict this. We shouldn't.  Just wait until the owner stops sending updates.
+            //maybe we should only be able to take control if we are already the controller?
+            //there's an issue here:
+            //1) A is owner, B is nonthing.  B wants ownership. B sends request, A rec's and stop sending state. 
+            //Sets local entity to new owner, sends final event to everyone informing them of new owner. Makese sense
+
+            //2) A is owner, B is controller, C is nothing.  C wants ownership.  SEnds req to A.  A ISN"T sending state so it can't stop.
+            //A passes ownership to C. B still sends update.  Everyone rec's B's update, and updates the wrong (or a non-existant entity). ERROR
+
+            //3) A is owner, B is controller, C is nothing.  C wants ownership.  Sends req to C for control.  B relinquishes control to C, stops sending updates
+            //and sends C "you're in control now".  Once C gets control, asks A for ownership. Maybe at this point C can just take ownership since we're already sending updates.
+            //send everyone an event saying "hey, I took control of entity update your lists"
+        }
+        //do the transfer.
+
     }
 
     //public abstract void SimulateOwner();
@@ -189,7 +244,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     /// <returns>true if you are the owner</returns>
     public bool isOwner() {
         return Core.net.me.connectionIndex == owner;
-}
+    }
 
 
     /// <summary>
@@ -217,8 +272,17 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
         //NetworkSendEvent when we have control to send the state updates
 
         //So yes, there is need for a distinction.
-        return Core.net.me.connectionIndex == controller;
+        return Core.net.me.connectionIndex == controller; //
     }
+
+    /// <summary>
+    /// returns true if you are the controller, or you are predicting control.  
+    /// </summary>
+    /// <returns></returns>
+    public bool hasControl() {
+        return Core.net.me.connectionIndex == controller || isPredictingControl;
+    }
+
 
     /// <summary>
     /// Stores a position snapshot to be used for interpolation.  Store positions when you rec state data.
@@ -240,12 +304,14 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     }
 
     public Vector3 GetInterpolatedPosition(int index) {
-        float renderTime = Time.realtimeSinceStartup - (interpolationBufferTime/1000f); //1/1000 to convert ms to s
+        if(!positionSnapshots.WithinRange(index)) return this.transform.position;
+
+        float renderTime = Time.realtimeSinceStartup - (interpolationBufferTime / 1000f); //1/1000 to convert ms to s
         //do we have at least two snapshots to interp between?
         if(positionSnapshots[index].Count == 0) {
             //hmmmmmmmmmm.  When we get our spawn, we should have at least one position stored.
             //this should never happen, unless we are trying to interpolate a state that doesn't have a transform, which you can't do
-            return new Vector3(0, 0, 0);
+            return this.transform.position;
         } else if(positionSnapshots[index].Count == 1) {
             //can't interp, just snap to our most recent time
             return positionSnapshots[index][0].pos;
@@ -256,7 +322,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
             bool foundTransition = false;
             int left = 0;
             int right = 0;
-            for(int i = positionSnapshots[index].Count-2; i >= 0; i--) { //start at the end (-1 because we need i and i++), because the switch should lbe closer here
+            for(int i = positionSnapshots[index].Count - 2; i >= 0; i--) { //start at the end (-1 because we need i and i++), because the switch should lbe closer here
                 if(!positionSnapshots[index].WithinRange(i + 1)) continue;
                 if(renderTime > positionSnapshots[index][i].timeRec && renderTime < positionSnapshots[index][i + 1].timeRec) {
                     foundTransition = true;
@@ -292,12 +358,14 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     }
 
     public Quaternion GetInterpolatedRotation(int index) {
+        if(!rotationSnapshots.WithinRange(index)) return this.transform.rotation;
+
         float renderTime = Time.realtimeSinceStartup - (interpolationBufferTime / 1000f); //1/1000 to convert ms to s
                                                                                           //do we have at least two snapshots to interp between?
         if(rotationSnapshots[index].Count == 0) {
             //hmmmmmmmmmm.  When we get our spawn, we should have at least one position stored.
             //this should never happen, unless we are trying to interpolate a state that doesn't have a transform, which you can't do
-            return new Quaternion(0f, 0f, 0f, 1f);
+            return this.transform.rotation;
         } else if(rotationSnapshots[index].Count == 1) {
             //can't interp, just snap to our most recent time
             return rotationSnapshots[index][0].rot;
@@ -344,6 +412,8 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     }
 
     public float GetInterpolatedFloat(int index) {
+        if(!floatSnapshots.WithinRange(index)) return 0f;
+
         float renderTime = Time.realtimeSinceStartup - (interpolationBufferTime / 1000f); //1/1000 to convert ms to s
         //do we have at least two snapshots to interp between?
         if(floatSnapshots[index].Count == 0) {
@@ -396,6 +466,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     }
 
     public int GetInterpolatedInt(int index) {
+        if(!intSnapshots.WithinRange(index)) return 0;
         float renderTime = Time.realtimeSinceStartup - (interpolationBufferTime / 1000f); //1/1000 to convert ms to s
         //do we have at least two snapshots to interp between?
         if(intSnapshots[index].Count == 0) {

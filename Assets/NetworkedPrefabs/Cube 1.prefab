@@ -123,14 +123,109 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c69793aaafda7ff44b8350685e297d9a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  serializationData:
+    SerializedFormat: 2
+    SerializedBytes: 
+    ReferencedUnityObjects: []
+    SerializedBytesString: 
+    Prefab: {fileID: 0}
+    PrefabModificationsReferencedUnityObjects: []
+    PrefabModifications: []
+    SerializationNodes:
+    - Name: queuedMessage
+      Entry: 7
+      Data: 0|System.Collections.Generic.Dictionary`2[[System.UInt64, mscorlib],[NetworkMessage,
+        Assembly-CSharp]], mscorlib
+    - Name: comparer
+      Entry: 7
+      Data: 1|System.Collections.Generic.GenericEqualityComparer`1[[System.UInt64,
+        mscorlib]], mscorlib
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: positionSnapshots
+      Entry: 7
+      Data: 2|System.Collections.Generic.List`1[[System.Collections.Generic.List`1[[Vector3Snapshot,
+        Assembly-CSharp]], mscorlib]], mscorlib
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: rotationSnapshots
+      Entry: 7
+      Data: 3|System.Collections.Generic.List`1[[System.Collections.Generic.List`1[[QuaternionSnapshot,
+        Assembly-CSharp]], mscorlib]], mscorlib
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: floatSnapshots
+      Entry: 7
+      Data: 4|System.Collections.Generic.List`1[[System.Collections.Generic.List`1[[FloatSnapshot,
+        Assembly-CSharp]], mscorlib]], mscorlib
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
+    - Name: intSnapshots
+      Entry: 7
+      Data: 5|System.Collections.Generic.List`1[[System.Collections.Generic.List`1[[IntSnapshot,
+        Assembly-CSharp]], mscorlib]], mscorlib
+    - Name: 
+      Entry: 12
+      Data: 0
+    - Name: 
+      Entry: 13
+      Data: 
+    - Name: 
+      Entry: 8
+      Data: 
   prefabId: 0
   networkId: 0
   owner: 0
   controller: 0
-  stateType: 0
+  isHidden: 0
+  isPendingDestroy: 0
+  isPredictingControl: 0
+  entityStatusRequestedCount: 0
+  entityDestroyTimeout: 100
+  lastStateUpdateRecTime: 0
+  interpolationBufferTime: 100
   updateRate: 0.33333334
   _updateRate: 0
   rb: {fileID: 0}
   deg: 0
   rotSpeed: 90
   radius: 1
+  lerpSpeed: 10
+  targetPos: {x: 0, y: 0, z: 0}
+  targetRotation: {x: 0, y: 0, z: 0, w: 0}
+  floatValue: 0
+  intValue: 0
+  targetFloat: 0
+  targetInt: 0
+  p: 0

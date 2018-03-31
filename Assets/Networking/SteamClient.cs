@@ -133,6 +133,9 @@ public class SteamClient:MonoBehaviour {
                     //might need a way to ensure messageType and the parameters match.
                     //pass in paramters with the register so we can check against the args list?
                     //idk
+                    //for(int i = 0; i < 6; i++) {
+                    //    Core.net.QueueMessage(Core.net.GetMessageCode("MessageTest" + i));
+                    //}
                 } finally {
                     UnityEngine.Profiling.Profiler.EndSample();
                 }
