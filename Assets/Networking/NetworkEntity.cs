@@ -12,9 +12,13 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     public int owner;
     public int controller;
 
+    public bool canMigrate = true; //set this to false for objects that should be destroyed when the owner leaves
+    //like a player character.
+
     public bool isHidden = false;
     public bool isPendingDestroy = false;
-    public bool isPredictingControl = false; //set to true when we 
+    public bool isPredictingControl = false; //set 
+    public bool isPendingMigration = false;
 
     public int entityStatusRequestedCount = 0; //how many times have you asked the owner
     public float entityDestroyTimeout = 10f;//
@@ -47,6 +51,13 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
         lastStateUpdateRecTime = Time.realtimeSinceStartup;
     }
 
+    //dunno if we need this.  Might be able to detect when an entity hasn't been
+    //receiving updates on the receiver and ask "are you dead, or just out of scope"
+    //if no response, instead of destroying it we try and take control
+    public virtual void OnOwnerDisconnect() {
+        //
+    }
+
     public abstract void OnNetworkSend();
 
     public abstract int Peek();
@@ -70,6 +81,12 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
             //we can now do stuff with hasControl() and this will return true.
 
         }
+    }
+
+    //takes control instantly in a situation where we know the request will never come back (because the old controller disconnected, etc)
+    public virtual void TakeControlInternal() {
+        isPredictingControl = false;
+        this.controller = Core.net.me.connectionIndex;
     }
 
     public virtual void OnEntityUpdate(params object[] args) {
@@ -102,6 +119,8 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     //also hides the entity locally so it stops doing stuff because we think it's dead
     public void Destroy() {
         //process this even if we're frozen
+        if(isPendingDestroy) return; //already in the process of being destroyed
+
         bool s = true;
         if(isOwner()) {
             //check to see if we have any queued entity messages waiting to go out
@@ -179,7 +198,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
 
 
     public virtual void Update() {
-        if(!isOwner() && !isController()) {
+        if(!hasControl()) {
             //how long has it been since you received a state update?
             float ts = Time.realtimeSinceStartup - lastStateUpdateRecTime;
             if(ts > entityDestroyTimeout) {

@@ -326,7 +326,9 @@ namespace MessageCode {
             return p;
         }
     }
-
+    //could we pack entity messages together or something?
+    //the prefabId, networkId, owner, and controler are all pretty heavy to send with every event
+    //but....eh
     public class EntityScopeRequest {
         public static void Process(ulong sender, params object[] args) {
             //Debug.Log("On Rec Connect Req Response");
@@ -337,20 +339,31 @@ namespace MessageCode {
             int controller = (int)args[3];
 
             NetworkEntity e = Core.net.GetEntity(owner, networkId);
-            bool canDestroy = false;
-            if(e != null) {
-                //can player "sender", destroy entity because it's outside of their scope?
-                //or should they keep it alive because this entity just doesn't have data to send?
+
+            //we send this event to an enity from client->entity controller if the client hasn't seen an update in a *while*
+            //essentially the client is asking "what's going on" because they need to either take control, destroy the entity, or do something else.
+            int scopeStatus = 0;
+            if(e == null) {
+                //this client is no longer has this entity.  It was probably destroyed because out of scope.
+                scopeStatus = 2; //But since B sent this message, B still cares about the entity, so B should take control of this immediately
+            } else {
                 float p = e.Priority(sender);
                 if(p <= 0f) {
-                    canDestroy = true;
+                    //the sender is no longer getting updates because they are outside of priority (fell out of scope)
+                    //they should destroy locally on B, because B shouldn't care about it anymore
+                    scopeStatus = 1;
+                } else {
+                    //the sender is still in scope, but isn't getting updates. Must mean there is just no data to be sent (static, non-moving entity?)
+                    //B should do nothing.  Keep their entity around because it's still *important* and in scope.
+                    scopeStatus = 0;
                 }
-            } else {
-                //entity is null, so I guess?
-                canDestroy = true;
             }
 
-            Core.net.QueueMessage(sender, Core.net.GetMessageCode("EntityScopeResponse"), prefabId, networkId, owner, controller, canDestroy);
+            //the only other thing that can happen is if the receiver of this event is already disconnected.  in which case this 
+            //event will never get processed.  So the sender of this event needs to keep a timer (or listen for disconnects)
+            //If the event never comes through B should take control of this entity because they obviously still care about it.
+
+            Core.net.QueueMessage(sender, Core.net.GetMessageCode("EntityScopeResponse"), prefabId, networkId, owner, controller, scopeStatus);
         }
 
         //
@@ -401,13 +414,32 @@ namespace MessageCode {
             int networkId = (int)args[1];
             int owner = (int)args[2];
             int controller = (int)args[3];
-            bool canDestroy = (bool)args[4];
-
+            int scopeStatus = (int)args[4];
             NetworkEntity e = Core.net.GetEntity(owner, networkId);
-            
-            if(e != null && canDestroy) {
-                e.DestroyInternal();
+            if(e == null) return;
+            Debug.Log("EntityScopeResponse: " + scopeStatus);
+            switch(scopeStatus) {
+                case 0:
+                    //sender just has no data for this entity, but it is still important. Don't do anything
+                    break;
+                case 1:
+                    //sender isn't replicating this entity to you anymore because you have fallen out of scope.
+                    //destroy this locally
+                    e.DestroyInternal();
+                    break;
+                case 2:
+                    //sender doesn't care about this entity anymore (they fell out of scope).  You still care about this
+                    //entity beacuse you sent the EntityScopeRequest.
+                    //take control of this entity.
+                    //sending a take control request will not come back because the entity no longer exists on the other end. 
+                    //so assume the request came back as true
+                    e.TakeControlInternal();
+                    break;
             }
+            
+            //if(e != null && canDestroy) {
+            //    e.DestroyInternal();
+            //}
         }
 
         //
@@ -417,14 +449,14 @@ namespace MessageCode {
             int networkId = (int)args[1];
             int owner = (int)args[2];
             int controller = (int)args[3];
-            bool canDestroy = (bool)args[4];
+            int scopeStatus = (int)args[4];
 
             //Debug.Log("NetworkID :: " + networkId);
             SerializerUtils.WriteInt(stream, prefabId, 0, Core.net.maxPrefabs);
             SerializerUtils.WriteInt(stream, networkId, 0, Core.net.maxNetworkIds);
             SerializerUtils.WriteInt(stream, owner, 0, Core.net.maxPlayers);
             SerializerUtils.WriteInt(stream, controller, 0, Core.net.maxPlayers);
-            SerializerUtils.WriteBool(stream, canDestroy);
+            SerializerUtils.WriteInt(stream, scopeStatus, 0, 3);
         }
 
         public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
@@ -433,16 +465,16 @@ namespace MessageCode {
             int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
             int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
             int controller = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
-            bool canDestroy = SerializerUtils.ReadBool(stream);
+            int scopeStatus = SerializerUtils.ReadInt(stream, 0, 3);
             //no need for a null check, can't have a deserializer without a processor.
             //I mean, you can, but it wouldn't do anything with the data you just received
-            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller, canDestroy);
+            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller, scopeStatus);
         }
 
         public static int Peek(params object[] args) {
             int s = 0;
             s += MessageCode.Internal.PeekEntityHeader();
-            s += SerializerUtils.RequiredBitsBool();
+            s += SerializerUtils.RequiredBitsInt(0,3);
             return s;
         }
 
@@ -525,18 +557,15 @@ namespace MessageCode {
             NetworkEntity e = Core.net.GetEntity(owner, networkId);
             SteamConnection c = Core.net.GetConnection(sender);
 
-            if(e != null && c != null) {
+            if(e != null && c != null && e.controller == Core.net.me.connectionIndex) { //we can only give control if we are the controller
                 e.controller = c.connectionIndex;
-                //this entity will stop sending updates...
-                //sinc it is no longer the controller...
-                //BUT what if it already has an event queued that's just lower priority?
-                //it will send it out, and maybe that's ok, since the new controller will
-                //send out them every update, so eventually anything buffered would be overwritten
-                //we should still just remove any events though.
-                //what if it's a destroy that's queued?
-                //oh well? id
-                Debug.Log("------ QueueMessage::EntityControlResponse");
-                Core.net.QueueMessage(sender, Core.net.GetMessageCode("EntityControlResponse"), prefabId, networkId, owner, e.controller);
+                
+                //could do some custom logic here to decide whether to return true or false to allow
+                //the take control.  In most cases I just want to accept anyways.
+                Core.net.QueueMessage(sender, Core.net.GetMessageCode("EntityControlResponse"), prefabId, networkId, owner, e.controller, true); 
+            } else {
+                //no, they can't take control
+                Core.net.QueueMessage(sender, Core.net.GetMessageCode("EntityControlResponse"), prefabId, networkId, owner, e.controller, false);
             }
         }
 
@@ -556,7 +585,6 @@ namespace MessageCode {
         }
 
         public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
-            Debug.Log("EntityControlRequest.Deserialize");
             int prefabId = SerializerUtils.ReadInt(stream, 0, Core.net.maxPrefabs);
             int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
             int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
@@ -588,15 +616,23 @@ namespace MessageCode {
             int networkId = (int)args[1];
             int owner = (int)args[2];
             int controller = (int)args[3];
+            bool approved = (bool)args[4];
 
             NetworkEntity e = Core.net.GetEntity(owner, networkId);
             SteamConnection c = Core.net.GetConnection(sender);
 
             //you have control now according to the old controller
-            if(e != null && c != null) {
+            if(e != null && c != null && approved) {
                 e.isPredictingControl = false;
                 e.controller = controller;
+            } else {
+                e.isPredictingControl = false;
             }
+            //if(e != null) {
+            //    e.ControlChanged();
+            //}
+
+            Debug.Log("EntityControlResponse::Success: " + approved);
         }
 
         //
@@ -606,12 +642,14 @@ namespace MessageCode {
             int networkId = (int)args[1];
             int owner = (int)args[2];
             int controller = (int)args[3];
+            bool approved = (bool)args[4];
 
             //Debug.Log("NetworkID :: " + networkId);
             SerializerUtils.WriteInt(stream, prefabId, 0, Core.net.maxPrefabs);
             SerializerUtils.WriteInt(stream, networkId, 0, Core.net.maxNetworkIds);
             SerializerUtils.WriteInt(stream, owner, 0, Core.net.maxPlayers);
             SerializerUtils.WriteInt(stream, controller, 0, Core.net.maxPlayers);
+            SerializerUtils.WriteBool(stream, approved);
         }
 
         public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
@@ -620,14 +658,16 @@ namespace MessageCode {
             int networkId = SerializerUtils.ReadInt(stream, 0, Core.net.maxNetworkIds);
             int owner = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
             int controller = SerializerUtils.ReadInt(stream, 0, Core.net.maxPlayers);
+            bool approved = SerializerUtils.ReadBool(stream);
             //no need for a null check, can't have a deserializer without a processor.
             //I mean, you can, but it wouldn't do anything with the data you just received
-            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller);
+            Core.net.MessageProcessors[msgCode](sender, prefabId, networkId, owner, controller, approved);
         }
 
         public static int Peek(params object[] args) {
             int s = 0;
             s += MessageCode.Internal.PeekEntityHeader();
+            s += SerializerUtils.RequiredBitsBool();
             return s;
         }
 

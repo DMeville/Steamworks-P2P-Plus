@@ -40,6 +40,10 @@ public class CubeBehaviour : NetworkEntity {
             Destroy();
         }
 
+        if(Input.GetKeyDown(KeyCode.D)) {
+            DestroyInternal();
+        }
+
         if(Input.GetKeyDown(KeyCode.A)) {
             p = !p;
         }
@@ -75,7 +79,7 @@ public class CubeBehaviour : NetworkEntity {
 
             //the issue is we shoudl be storing this every frame, if we're not receiving updates
             //so that if we ever lose control we will still have something to interp to
-            //not sure where to inject that though
+            //not sure where to inject that though. In lateupdate?
             //update the position with the interpolated version (using our interp time
             this.transform.position = GetInterpolatedPosition(0); //we should come up with a more modular way to store these
                                                                  //what if we want more than one position per state (for whatever reason)
@@ -86,7 +90,7 @@ public class CubeBehaviour : NetworkEntity {
 
         } else {
 
-            //deg += Time.deltaTime * rotSpeed;
+            deg += Time.deltaTime * rotSpeed;
             if(deg >= 360f) {
                 deg = 0;
                 targetPos = new Vector3(Random.Range(-3f, 3f), Random.Range(0f, 1f), Random.Range(-3f, 3f));
@@ -152,6 +156,20 @@ public class CubeBehaviour : NetworkEntity {
         //if we had another float we wanted to interpolate
         //StoreFloatSnapshot(1, (float)args[6]); //then call it with GetInterpolatedFloat(1);
         //}
+    }
+
+    public override void LateUpdate() {
+        base.LateUpdate();
+        //we need to store these even if we are the controller, but we don't ever use the stored values
+        //Only in the case where we pass control to someone else, this allows us to interpolate from
+        //our last known position instead of snapping to 0 before our first state update from our new owner.
+        //This just makes the transition between controllers smoother
+        if(hasControl()) { //we need to store these 
+            StorePositionSnapshot(0, transform.position.x, transform.position.y, transform.position.z);
+            StoreRotationSnapshot(0, transform.rotation);
+            StoreIntSnapshot(0, intValue);
+            StoreFloatSnapshot(0, floatValue);
+        }
     }
 
     public override int Peek() {
