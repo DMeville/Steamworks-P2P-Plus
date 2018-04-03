@@ -208,9 +208,12 @@ MonoBehaviour:
   networkId: 0
   owner: 0
   controller: 0
+  canMigrate: 1
+  ignoreZones: 0
   isHidden: 0
   isPendingDestroy: 0
   isPredictingControl: 0
+  isPendingMigration: 0
   entityStatusRequestedCount: 0
   entityDestroyTimeout: 100
   lastStateUpdateRecTime: 0

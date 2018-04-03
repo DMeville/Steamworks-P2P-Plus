@@ -13,6 +13,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     public int controller;
 
     public bool canMigrate = true; //set this to false for objects that should be destroyed when the owner leaves
+    public bool ignoreZones = false;
     //like a player character.
 
     public bool isHidden = false;
@@ -56,6 +57,24 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     //if no response, instead of destroying it we try and take control
     public virtual void OnOwnerDisconnect() {
         //
+    }
+
+    public virtual bool ZoneCheck(int controller) {
+        //is the entity we're receiving state update for zoneless?
+        if(ignoreZones) { //can use this I guess, so long as we're aware this is per PREFAB, not per instance
+            //eg, you can't spawn an object, and change it's ignoreZones bool.
+            return true;
+        } else {
+            //is the zone this entity's controller is in the same zone we are in?
+            //if yes, we want to take this udpate, otherwise we want to ignore it altogether
+            //(so that we don't spawn an entity from across zones, eg scenes)
+            Debug.Log(Core.net.me.zone + " : " + Core.net.GetConnection(controller).zone);
+            if(Core.net.me.zone == Core.net.GetConnection(controller).zone) {
+                return true;
+            } else {
+                return false;
+            }
+        }
     }
 
     public abstract void OnNetworkSend();

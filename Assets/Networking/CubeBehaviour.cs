@@ -215,6 +215,7 @@ public class CubeBehaviour : NetworkEntity {
 
     public override void Deserialize(UdpStream stream, int prefabId, int networkId, int owner, int controller) {
         //deserialize any state data.
+
         float x = SerializerUtils.ReadFloat(stream, -10f, 10f, 0.0001f);
         float y = SerializerUtils.ReadFloat(stream, -10f, 10f, 0.0001f);
         float z = SerializerUtils.ReadFloat(stream, -10f, 10f, 0.0001f);
@@ -222,6 +223,8 @@ public class CubeBehaviour : NetworkEntity {
         float fValue = SerializerUtils.ReadFloat(stream, -100f, 100f, 0.001f);
         Quaternion rotation = SerializerUtils.ReadQuaternion(stream, 0.001f);
 
+        if(!ZoneCheck(controller)) return;//we have to do this after the deseralize, otherwise the data will be corrupted
+        Debug.Log("!ZoneCheck: " + !ZoneCheck(controller));
         Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, x, y, z, rotation, iValue, fValue);
     }
 

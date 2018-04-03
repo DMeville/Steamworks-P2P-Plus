@@ -9,6 +9,7 @@ using System;
 
 using BitTools;
 using ByteStream = UdpKit.UdpStream;
+using UnityEngine.SceneManagement;
 
 public class NetworkManager:SerializedMonoBehaviour {
     public static NetworkManager instance;
@@ -47,6 +48,7 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     public SteamConnection me;
     public Dictionary<ulong, SteamConnection> connections = new Dictionary<ulong, SteamConnection>();
+    public Dictionary<int, NetworkEntity[]> entities = new Dictionary<int, NetworkEntity[]>();
     public int connectionCounter = 0;
 
     //per player, we clear between each queue.
@@ -79,7 +81,10 @@ public class NetworkManager:SerializedMonoBehaviour {
   
 
     void Awake() {
-
+        if(instance != null) {
+            DestroyImmediate(this.gameObject);
+            return;
+        }
         DontDestroyOnLoad(this.gameObject);
         instance = this;
         Core.net = this;
@@ -162,11 +167,20 @@ public class NetworkManager:SerializedMonoBehaviour {
             MessageCode.EntityControlResponse.Serialize,
             MessageCode.EntityControlResponse.Deserialize,
             MessageCode.EntityControlResponse.Process);
+
+        RegisterMessageType("SetConnectionData_Zone", //used to set connection metadata for all players
+            MessageCode.SetConnectionData_Zone.Peek,
+            MessageCode.SetConnectionData_Zone.Priority,
+            MessageCode.SetConnectionData_Zone.Serialize,
+            MessageCode.SetConnectionData_Zone.Deserialize,
+            MessageCode.SetConnectionData_Zone.Process);
         
 
         for(int i = 0; i < registerPrefabsOnStart.Count; i++) {
             RegisterPrefab(registerPrefabsOnStart[i].gameObject.name, registerPrefabsOnStart[i]);
         }
+
+        LoadScene(2);
     }
 
     //returns how many seconds per network tick (networkSimulation rate of 20 => 50ms, or one tick ever ~ 3 fixedUpdates
@@ -423,11 +437,21 @@ public class NetworkManager:SerializedMonoBehaviour {
 
         //add it to the owners entity list
         if(ngo != null) {
-            SteamConnection c = GetConnection(owner);
-            c.entities[networkId] = ngo;
+            //SteamConnection c = GetConnection(owner);
+            StoreEntity(owner, networkId, ngo);
+            //c.entities[networkId] = ngo;
         }
 
         return ngo.gameObject;
+    }
+
+    public void StoreEntity(int connectionIndex, int networkId, NetworkEntity entity) {
+        if(!entities.ContainsKey(connectionIndex)) {
+            entities.Add(connectionIndex, new NetworkEntity[maxNetworkIds]);
+        } else {
+        }
+
+        entities[connectionIndex][networkId] = entity;
     }
 
     //includes me
@@ -442,9 +466,9 @@ public class NetworkManager:SerializedMonoBehaviour {
     }
 
     public NetworkEntity GetEntity(int owner, int networkId) {
-        SteamConnection c = GetConnection(owner);
-        if(c != null) {
-            return c.entities[networkId];
+        //SteamConnection c = GetConnection(owner);
+        if(entities.ContainsKey(owner)) {
+            return entities[owner][networkId];
         } else {
             return null;
         }
@@ -642,6 +666,10 @@ public class NetworkManager:SerializedMonoBehaviour {
                 AddToBandwidthInBuffer(-8);
                 break; //no more data, the rest of this packet is junk
             } 
+            //can we ignore all state data here if we're not in the same zone?
+            //we don't know what kind of entity it's from..so...
+            //maybe all zoneless data should just go through events?
+            //or we can check the prefab to find out if it's zoneless?
 
             if(MessageDeserializers[msgCode] != null) {
                 MessageDeserializers[msgCode](steamID, msgCode, readStream); 
@@ -801,6 +829,13 @@ public class NetworkManager:SerializedMonoBehaviour {
 
         bytesInPerSecond = (int)((float)bIn / (8f * bandwidthBuffer));
         bytesOutPerSecond = (int)((float)bOut / (8f * bandwidthBuffer));
+
+        if(Input.GetKeyDown(KeyCode.L)) {
+            Core.net.LoadScene(2);
+        }
+        if(Input.GetKeyDown(KeyCode.K)) {
+            Core.net.LoadScene(3);
+        }
     }
 
 
@@ -814,7 +849,28 @@ public class NetworkManager:SerializedMonoBehaviour {
         bitsInBuffer.Add(new BandwidthData(numBits));
     }
 
-   
+    public bool isLoadingScene = false;
+    public void LoadScene(int sceneIndex) {
+        if(!isLoadingScene) {
+            isLoadingScene = true;
+            //when this is called, we should STOP receving all state update
+            //as we're about to move to a new scene
+            me.zone = sceneIndex;
+            Core.net.QueueMessage(GetMessageCode("SetConnectionData_Zone"), me.zone);
+            StartCoroutine("LoadSceneInternal", sceneIndex);
+        }
+    }
+
+    private IEnumerator LoadSceneInternal(int sceneIndex) {
+        AsyncOperation load = SceneManager.LoadSceneAsync(sceneIndex);
+        while(!load.isDone) {
+            //load.progress update progress bar
+            yield return null;
+        }
+        isLoadingScene = false;
+        //scene loaded sucessfully
+    }
+
 
     //cleanup method.  Closes all sessions when we close the game, this makes it so 
     //other players don't have to wait for a timeout to be detected before removing you when you leave (in most cases)

@@ -344,19 +344,22 @@ namespace MessageCode {
             //essentially the client is asking "what's going on" because they need to either take control, destroy the entity, or do something else.
             int scopeStatus = 0;
             if(e == null) {
+                
                 //this client is no longer has this entity.  It was probably destroyed because out of scope.
                 scopeStatus = 2; //But since B sent this message, B still cares about the entity, so B should take control of this immediately
             } else {
-                float p = e.Priority(sender);
-                if(p <= 0f) {
-                    //the sender is no longer getting updates because they are outside of priority (fell out of scope)
-                    //they should destroy locally on B, because B shouldn't care about it anymore
-                    scopeStatus = 1;
-                } else {
-                    //the sender is still in scope, but isn't getting updates. Must mean there is just no data to be sent (static, non-moving entity?)
-                    //B should do nothing.  Keep their entity around because it's still *important* and in scope.
-                    scopeStatus = 0;
-                }
+                
+                    float p = e.Priority(sender);
+                    if(p <= 0f) {
+                        //the sender is no longer getting updates because they are outside of priority (fell out of scope)
+                        //they should destroy locally on B, because B shouldn't care about it anymore
+                        scopeStatus = 1;
+                    } else {
+                        //the sender is still in scope, but isn't getting updates. Must mean there is just no data to be sent (static, non-moving entity?)
+                        //B should do nothing.  Keep their entity around because it's still *important* and in scope.
+                        scopeStatus = 0;
+                    }
+
             }
 
             //the only other thing that can happen is if the receiver of this event is already disconnected.  in which case this 
@@ -433,7 +436,11 @@ namespace MessageCode {
                     //take control of this entity.
                     //sending a take control request will not come back because the entity no longer exists on the other end. 
                     //so assume the request came back as true
-                    e.TakeControlInternal();
+                    if(e.canMigrate) { 
+                        e.TakeControlInternal();
+                    } else {
+                        e.DestroyInternal();
+                    }
                     break;
             }
             
@@ -678,6 +685,33 @@ namespace MessageCode {
         }
     }
 
-   
+    public class SetConnectionData_Zone {
+        public static void Process(ulong sender, params object[] args) {
+            Core.net.GetConnection(sender).zone = (int)args[0];
+        }
+
+        public static void Serialize(ulong receiver, ByteStream stream, params object[] args) {
+            int zone = (int)args[0];
+            SerializerUtils.WriteInt(stream, zone, 0, 31);
+        }
+
+        public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
+            //Remember to call Core.Net.MessageProcessors[msgCode](sender, args...) here!
+            //Core.net.MessageProcessors[msgCode](sender, arg0, arg1, arg2, arg3, arg4, arg5);
+            int zone = SerializerUtils.ReadInt(stream, 0, 31);
+            Core.net.MessageProcessors[msgCode](sender, zone);
+        }
+
+        public static int Peek(params object[] args) {
+            int s = 0;
+            s += SerializerUtils.RequiredBitsInt(0, 31); 
+            return s;
+        }
+
+        public static float Priority(ulong receiver, params object[] args) {
+            float p = 999f;
+            return p;
+        }
+    }
 
 }
