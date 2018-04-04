@@ -183,15 +183,42 @@ public class CubeBehaviour : NetworkEntity {
         return s;
     }
 
-    public override float Priority(ulong sendTo) {
+    //this is a helper, this is called in the network look to get the priority for this entity
+    //override this here, otherwise it gets called with no args.
+    public override float PriorityCaller(ulong steamId) {
+        return Priority(steamId, this.transform.position.x, this.transform.position.y, this.transform.position.z);
+    }
+
+    //we should do a priority check while sending to remove messages to people who don't want it
+    //we should also do a priority check when receving to filter out messages we don't want that might have been sent
+    //eg. we change scenes, still get events while the sender realizes we changed scenes.  We should ignore those events
+    public override float Priority(ulong sendTo, params object[] args) {
+
+        float x = (float)args[0];
+        float y = (float)args[1];
+        float z = (float)args[2];
+
         float r = 0f;
         if(p) r = 0f;
         else r = 1f;
 
-        if(this.transform.position.x > 2f) {
+        if(x > 2f) {
             r = 0f;
         } else {
             r = 1f;
+        }
+
+        if(ignoreZones) {
+            //always send
+        } else {
+            //not ignoring zones
+            //only send if in the same zone
+            if(Core.net.me.inSameZone(Core.net.GetConnection(sendTo))) { //can't use Core.net.GetConnection(controller) here, because controller is an instance property! Unless we pass it in as an arg!
+                //in the same zone, send it
+            } else {
+                //ignore it
+                r = 0f;
+            }
         }
 
         Debug.Log("Entity.Priority: " + r);
@@ -200,6 +227,8 @@ public class CubeBehaviour : NetworkEntity {
         //requires some player metatdata to be accessed from *somewhere* though...
         return r;        //return 0f;
     }
+
+ 
 
     //bolt 3 float properties compressed the same (18 bits each = 54 bits)
     //20 packets per second, means 1080 bits or 135 bytes per second or 0.135 bytes per second
@@ -223,9 +252,21 @@ public class CubeBehaviour : NetworkEntity {
         float fValue = SerializerUtils.ReadFloat(stream, -100f, 100f, 0.001f);
         Quaternion rotation = SerializerUtils.ReadQuaternion(stream, 0.001f);
 
-        if(!ZoneCheck(controller)) return;//we have to do this after the deseralize, otherwise the data will be corrupted
-        Debug.Log("!ZoneCheck: " + !ZoneCheck(controller));
-        Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, x, y, z, rotation, iValue, fValue);
+        //we have to do this after the deseralize, otherwise the data will be corrupted
+        //we can't do this here because this call to priority would be on the prefab, not the instance because
+        //this is on the receiver. and we usually want to use this.transform.position in the priority check
+        //and it would always be 0,0,0!
+
+        //at this point, we don't know if this entity is even instantiated in the world
+        //we don't do that check until inside of ProcessEntityMessage, but in some cases we don't
+        //want to process it because then it will get instantiated when we don't want it to (eg, in a different scene)
+        //so we need to make some compromises with how the priority system will work for entities
+        //eg, we can only use prefab values as we don't have an entity instance to work with
+        //but we can push in any extra data if we really need to, we just need to modify it
+        //we could pass in args, too..
+        if(Priority(Core.net.GetConnection(controller).steamID, x, y, z) > 0f) { //make sure we're getting an update we care about (same zone, etc)
+            Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, x, y, z, rotation, iValue, fValue);
+        }
     }
 
     public void OnDestroy() {

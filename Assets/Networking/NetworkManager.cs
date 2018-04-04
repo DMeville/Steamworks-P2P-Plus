@@ -536,7 +536,7 @@ public class NetworkManager:SerializedMonoBehaviour {
                             if(m.entity == null) {
                                 m.priority = 0; //can't send this because our entity is GONE
                             } else {
-                                m.priority = m.entity.Priority(sc.steamID);
+                                m.priority = m.entity.PriorityCaller(sc.steamID);
                             }
                         } else {
                             //normal message

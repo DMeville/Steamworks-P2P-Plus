@@ -47,6 +47,10 @@ public class SteamConnection {
         openPings.Add(Time.realtimeSinceStartup);
     }
 
+    public bool inSameZone(SteamConnection c) {
+        return zone == c.zone;
+    }
+
 
 
 

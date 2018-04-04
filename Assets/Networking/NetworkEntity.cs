@@ -59,29 +59,27 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
         //
     }
 
-    public virtual bool ZoneCheck(int controller) {
-        //is the entity we're receiving state update for zoneless?
-        if(ignoreZones) { //can use this I guess, so long as we're aware this is per PREFAB, not per instance
-            //eg, you can't spawn an object, and change it's ignoreZones bool.
-            return true;
-        } else {
-            //is the zone this entity's controller is in the same zone we are in?
-            //if yes, we want to take this udpate, otherwise we want to ignore it altogether
-            //(so that we don't spawn an entity from across zones, eg scenes)
-            Debug.Log(Core.net.me.zone + " : " + Core.net.GetConnection(controller).zone);
-            if(Core.net.me.zone == Core.net.GetConnection(controller).zone) {
-                return true;
-            } else {
-                return false;
-            }
-        }
+    public virtual bool inSameZone(int controller) {
+        if(ignoreZones) return true;
+        if(Core.net.me.inSameZone(Core.net.GetConnection(controller))) return true;
+        else return false;
     }
 
     public abstract void OnNetworkSend();
 
     public abstract int Peek();
 
-    public abstract float Priority(ulong sendTo);
+    //container method. This is what the networkloop calls on this entity to get the priority
+    //this is so you can define what data you need in the priority call (like xyz)
+    //and it passes in that data.  Use only entity data that you are replicating via state
+    //see CubeBehaviour for an example of this
+    public virtual float PriorityCaller(ulong sendTo) {
+        return 1f;
+    }
+
+    //entity priority takes xyz values, either from the entity on send, or the deserialized xyz from the message
+    //so we can always sort priority based on position (which is what we want to do like 99% of the time)
+    public abstract float Priority(ulong sendTo, params object[] args);
     //don't perfabId, networkId, owner, controller are serialized and deserialized automatically before calling these
     //serialize is called on the entity instance
     public abstract void Serialize(ByteStream stream);
