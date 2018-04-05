@@ -113,6 +113,13 @@ public class SteamClient:MonoBehaviour {
             GUILayout.Label(string.Format("In: {0} - Out: {1}", Core.net.bytesInPerSecond, Core.net.bytesOutPerSecond));
             GUILayout.BeginHorizontal();
 
+            if(GUILayout.Button("Spawn Player")) {
+                if(Core.net.me.playerEntity == null) {
+                    GameObject go = Core.net.SpawnPrefab("Player");
+                    Core.net.me.playerEntity = go.GetComponent<NetworkEntity>();
+                }
+            }
+
             if(GUILayout.Button("SendP2P")) {
                 Debug.Log("Sending P2P");
                 try {

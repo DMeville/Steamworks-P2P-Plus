@@ -1,33 +1,14 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using UdpKit;
 using UnityEngine;
+using UdpKit;
 
+public class PlayerBehaviour : NetworkEntity {
 
-public class CubeBehaviour : NetworkEntity {
-
-    //this generally should not be faster than the network simulation rate.
-    //if it is you can end up queueing too many messages and things spiral out of control.
-    //might need somethign else to control if we're sending too much messages too...
-    //send faster?
-    //idk?
-    public float updateRate = 0.3f;
-    public float _updateRate = 0f;
     public Rigidbody rb;
-
-    public float deg = 0f;
-    public float rotSpeed = 90f;
-    public float radius = 1f;
-    public float lerpSpeed = 10f;
-
     public Vector3 targetPos;
     public Quaternion targetRotation;
-    public float floatValue = 0f;
-    public int intValue = 0;
-
-    public float targetFloat = 0f;
-    public int targetInt = 0;
-    public bool p = false;
+    public float moveSpeed = 1f;
 
     public void Awake() {
         rb = this.GetComponent<Rigidbody>();
@@ -36,34 +17,14 @@ public class CubeBehaviour : NetworkEntity {
     public override void Update() {
         base.Update();
 
-        if(Input.GetKeyDown(KeyCode.Space)) {
-            Destroy();
-        }
-
-        if(Input.GetKeyDown(KeyCode.D)) {
-            DestroyInternal();
-        }
-
-        if(Input.GetKeyDown(KeyCode.A)) {
-            p = !p;
-        }
-
-        if(Input.GetKeyDown(KeyCode.C)) {
-            Debug.Log("trying to take control");
-            if(isController()) {
-                Debug.Log("We are already the controller");
-            } else {
-                TakeControl();
-            }
-        }
 
         if(isPredictingControl) {
             SetColor(Color.green);
         } else {
             if(controller == 0) {
-                SetColor(Color.green);
+                SetColor(Color.red);
             } else {
-                SetColor(Color.cyan);
+                SetColor(Color.blue);
             }
         }
 
@@ -82,36 +43,32 @@ public class CubeBehaviour : NetworkEntity {
             //not sure where to inject that though. In lateupdate?
             //update the position with the interpolated version (using our interp time
             this.transform.position = GetInterpolatedPosition(0); //we should come up with a more modular way to store these
-                                                                 //what if we want more than one position per state (for whatever reason)
+                                                                  //what if we want more than one position per state (for whatever reason)
             this.transform.rotation = GetInterpolatedRotation(0); //or we want to interpolate a float (for colour or something) idk
 
-            this.floatValue = GetInterpolatedFloat(0);
-            this.intValue = GetInterpolatedInt(0);
+
 
         } else {
-
-            //deg += Time.deltaTime * rotSpeed;
-            if(deg >= 360f) {
-                deg = 0;
-                targetPos = new Vector3(Random.Range(-3f, 3f), Random.Range(0f, 1f), Random.Range(-3f, 3f));
-                targetRotation = Random.rotation;
-                targetFloat = Random.Range(-100f, 100f);
-                targetInt = Random.Range(-100, 100);
+            //do control
+            Vector3 mov = new Vector3();
+            if(Input.GetKey(KeyCode.W)) {
+                mov.z = 1f;
+            } else if(Input.GetKey(KeyCode.S)) {
+                mov.z = -1f;
             }
 
-            //this.transform.position = Vector3.Lerp(this.transform.position, targetPos, lerpSpeed * Time.deltaTime);
-            //this.transform.rotation = Quaternion.Slerp(this.transform.rotation, targetRotation, lerpSpeed * Time.deltaTime);
-            floatValue = Mathf.Lerp(floatValue, targetFloat, lerpSpeed * Time.deltaTime);
-            intValue = (int)Mathf.Lerp(intValue, targetInt, lerpSpeed * Time.deltaTime);
-            //float x = Mathf.Cos(deg * Mathf.Deg2Rad) * radius;
-            //float z = Mathf.Sin(deg * Mathf.Deg2Rad) * radius;
+            if(Input.GetKey(KeyCode.D)) {
+                mov.x = 1f;
+            } else if(Input.GetKey(KeyCode.A)) {
+                mov.x = -1f;
+            }
 
-            //this.transform.position = new Vector3(x, 0f, z);
+            this.transform.position += mov * moveSpeed * Time.deltaTime;
         }
     }
 
     //
-    
+
 
     public void SetColor(Color c) {
         this.GetComponent<Renderer>().material.color = c;
@@ -129,15 +86,9 @@ public class CubeBehaviour : NetworkEntity {
             //normal spawn, no state yet?
         }
 
-        if(hasControl()) {
-            float x = Random.Range(-25f, 25f);
-            float z = Random.Range(-25f, 25f);
-            this.transform.position = new Vector3(x, 0, z);
-        }
-
         //always 
         Core.net.NetworkSendEvent += OnNetworkSend;
-        
+
     }
 
     public override void OnChangeOwner(int newOwner) {
@@ -148,8 +99,6 @@ public class CubeBehaviour : NetworkEntity {
     //queue the state update message
     public override void OnNetworkSend() {
         if(isController()) {
-
-            //should we destroy this entity locally?
             float p = PriorityCaller(Core.net.me.steamID, true);
             if(p <= 0f) {
                 DestroyInternal();
@@ -164,8 +113,8 @@ public class CubeBehaviour : NetworkEntity {
 
         StorePositionSnapshot(0, (float)args[0], (float)args[1], (float)args[2]);
         StoreRotationSnapshot(0, (Quaternion)args[3]);
-        StoreIntSnapshot(0, (int)args[4]);
-        StoreFloatSnapshot(0, (float)args[5]);
+        //StoreIntSnapshot(0, (int)args[4]);
+        //StoreFloatSnapshot(0, (float)args[5]);
         //if we had another float we wanted to interpolate
         //StoreFloatSnapshot(1, (float)args[6]); //then call it with GetInterpolatedFloat(1);
         //}
@@ -180,8 +129,6 @@ public class CubeBehaviour : NetworkEntity {
         if(hasControl()) { //we need to store these 
             StorePositionSnapshot(0, transform.position.x, transform.position.y, transform.position.z);
             StoreRotationSnapshot(0, transform.rotation);
-            StoreIntSnapshot(0, intValue);
-            StoreFloatSnapshot(0, floatValue);
         }
     }
 
@@ -190,54 +137,50 @@ public class CubeBehaviour : NetworkEntity {
         s += SerializerUtils.RequiredBitsFloat(-100f, 100f, 0.0001f);
         s += SerializerUtils.RequiredBitsFloat(-100f, 100f, 0.0001f);
         s += SerializerUtils.RequiredBitsFloat(-100f, 100f, 0.0001f);
-        s += SerializerUtils.RequiredBitsInt(-100, 100);
-        s += SerializerUtils.RequiredBitsFloat(-100f, 100f, 0.001f);
         s += SerializerUtils.RequiredBitsQuaternion(0.001f);
         return s;
     }
 
     //this is a helper, this is called in the network look to get the priority for this entity
     //override this here, otherwise it gets called with no args.
-    public override float PriorityCaller(ulong steamId, bool isSending = true, params object[] args) { //
-
-        float r = 0f;
+    public override float PriorityCaller(ulong steamId, bool isSending = true, params object[] args) {
         if(ignoreZones) {
-            r = 1f;
+            return 1f;
         } else {
             if(Core.net.me.inSameZone(Core.net.GetConnection(steamId))) {
                 if(isSending) {
-                    r = Priority(steamId, this.transform.position.x, this.transform.position.y, this.transform.position.z);
+                    return Priority(steamId, this.transform.position.x, this.transform.position.y, this.transform.position.z);
                 } else {
-
-                    float x = (float)args[0];//need to read in whatever data we need from params here too..
+                    float x = (float)args[0];
                     float y = (float)args[1];
                     float z = (float)args[2];
 
-                    r = Priority(Core.net.me.steamID, x, y, z);
+                    return Priority(Core.net.me.steamID, x, y, z);
                 }
             } else {
-                r =0f;//not in the same zone, 
+                return 0f;//not in the same zone, 
             }
         }
-        Debug.Log("CubeBehaviour.PriorityCaller::isSending: " + isSending + " : p: " + r);
-        return r;
     }
 
     //we should do a priority check while sending to remove messages to people who don't want it
     //we should also do a priority check when receving to filter out messages we don't want that might have been sent
     //eg. we change scenes, still get events while the sender realizes we changed scenes.  We should ignore those events
-    public override float Priority(ulong steamId, params object[] args) {
+    public override float Priority(ulong sendTo, params object[] args) {
 
-        float x = (float)args[0]; //this entity's position
+        float x = (float)args[0];
         float y = (float)args[1];
         float z = (float)args[2];
 
         float r = 1f;
-        float d = Vector3.Distance(new Vector3(x, y, z), Core.net.GetConnection(steamId).lastPosition); //this should be                                                                               //scale linearly at 25m, then anything larger set to 0
+        //in the same zone, send it
+        float d = Vector3.Distance(new Vector3(x, y, z), Core.net.GetConnection(sendTo).lastPosition);
+        //scale linearly at 25m, then anything larger set to 0
         float radius = 25f;
 
         r = Mathf.Clamp(radius - d, 0f, radius);
-        Debug.Log("lastPos: " + Core.net.GetConnection(steamId).lastPosition);
+
+
         //Debug.Log("Entity.Priority: " + r);
         //could check the connections[sendTo], get their player position and find out the distance between them
         //and this object.  And scale priority based on that, so it's lower the further away they are
@@ -245,7 +188,7 @@ public class CubeBehaviour : NetworkEntity {
         return r;        //return 0f;
     }
 
- 
+
 
     //bolt 3 float properties compressed the same (18 bits each = 54 bits)
     //20 packets per second, means 1080 bits or 135 bytes per second or 0.135 bytes per second
@@ -254,8 +197,6 @@ public class CubeBehaviour : NetworkEntity {
         SerializerUtils.WriteFloat(stream, this.transform.position.x, -100f, 100f, 0.0001f);
         SerializerUtils.WriteFloat(stream, this.transform.position.y, -100f, 100f, 0.0001f);
         SerializerUtils.WriteFloat(stream, this.transform.position.z, -100f, 100f, 0.0001f);
-        SerializerUtils.WriteInt(stream, intValue, -100, 100);
-        SerializerUtils.WriteFloat(stream, floatValue, -100f, 100f, 0.001f);
         SerializerUtils.WriteQuaterinion(stream, this.transform.rotation, 0.001f);
     }
 
@@ -265,8 +206,6 @@ public class CubeBehaviour : NetworkEntity {
         float x = SerializerUtils.ReadFloat(stream, -100f, 100f, 0.0001f);
         float y = SerializerUtils.ReadFloat(stream, -100f, 100f, 0.0001f);
         float z = SerializerUtils.ReadFloat(stream, -100f, 100f, 0.0001f);
-        int iValue = SerializerUtils.ReadInt(stream, -100, 100);
-        float fValue = SerializerUtils.ReadFloat(stream, -100f, 100f, 0.001f);
         Quaternion rotation = SerializerUtils.ReadQuaternion(stream, 0.001f);
 
         //we have to do this after the deseralize, otherwise the data will be corrupted
@@ -282,10 +221,10 @@ public class CubeBehaviour : NetworkEntity {
         //but we can push in any extra data if we really need to, we just need to modify it
         //we could pass in args, too..
         if(PriorityCaller(Core.net.GetConnection(controller).steamID, false, x, y, z) > 0f) { //make sure we're getting an update we care about (same zone, etc)
-            Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, x, y, z, rotation, iValue, fValue);
+            Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, x, y, z, rotation);
         }
 
-        
+
     }
 
     public void OnDestroy() {

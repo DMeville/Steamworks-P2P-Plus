@@ -349,7 +349,8 @@ namespace MessageCode {
                 scopeStatus = 2; //But since B sent this message, B still cares about the entity, so B should take control of this immediately
             } else {
                 
-                    float p = e.Priority(sender);
+                    //float p = e.Priority(sender, e.transform.position.x, e.transform.position.y, e.transform.position.z);
+                    float p = e.PriorityCaller(sender, true);
                     if(p <= 0f) {
                         //the sender is no longer getting updates because they are outside of priority (fell out of scope)
                         //they should destroy locally on B, because B shouldn't care about it anymore
@@ -685,26 +686,49 @@ namespace MessageCode {
         }
     }
 
-    public class SetConnectionData_Zone {
+    public class SetConnectionData {
         public static void Process(ulong sender, params object[] args) {
-            Core.net.GetConnection(sender).zone = (int)args[0];
+            SteamConnection c = Core.net.GetConnection(sender);
+            if(c != null) {
+                c.zone = (int)args[0];
+                c.lastPosition.x = (float)args[1];
+                c.lastPosition.y = (float)args[2];
+                c.lastPosition.z = (float)args[3];
+            }
         }
 
         public static void Serialize(ulong receiver, ByteStream stream, params object[] args) {
             int zone = (int)args[0];
-            SerializerUtils.WriteInt(stream, zone, 0, 31);
+            float x = (float)args[1];
+            float y = (float)args[2];
+            float z = (float)args[3];
+            
+            SerializerUtils.WriteInt(stream, zone, 0, Core.net.maxZones);
+            SerializerUtils.WriteFloat(stream, x, Core.net.minWorldPos.x, Core.net.maxWorldPos.x, Core.net.worldPosPrecision);
+            SerializerUtils.WriteFloat(stream, y, Core.net.minWorldPos.y, Core.net.maxWorldPos.y, Core.net.worldPosPrecision);
+            SerializerUtils.WriteFloat(stream, z, Core.net.minWorldPos.z, Core.net.maxWorldPos.z, Core.net.worldPosPrecision);
+
         }
 
         public static void Deserialize(ulong sender, int msgCode, ByteStream stream) {
             //Remember to call Core.Net.MessageProcessors[msgCode](sender, args...) here!
             //Core.net.MessageProcessors[msgCode](sender, arg0, arg1, arg2, arg3, arg4, arg5);
-            int zone = SerializerUtils.ReadInt(stream, 0, 31);
-            Core.net.MessageProcessors[msgCode](sender, zone);
+            int zone = SerializerUtils.ReadInt(stream, 0, Core.net.maxZones);
+            float x = SerializerUtils.ReadFloat(stream, Core.net.minWorldPos.x, Core.net.maxWorldPos.x, Core.net.worldPosPrecision);
+            float y = SerializerUtils.ReadFloat(stream, Core.net.minWorldPos.y, Core.net.maxWorldPos.y, Core.net.worldPosPrecision);
+            float z = SerializerUtils.ReadFloat(stream, Core.net.minWorldPos.z, Core.net.maxWorldPos.z, Core.net.worldPosPrecision);
+
+            Core.net.MessageProcessors[msgCode](sender, zone, x, y, z);
         }
 
         public static int Peek(params object[] args) {
             int s = 0;
-            s += SerializerUtils.RequiredBitsInt(0, 31); 
+
+            s += SerializerUtils.RequiredBitsInt(0, 31);
+            s += SerializerUtils.RequiredBitsFloat(Core.net.minWorldPos.x, Core.net.maxWorldPos.x, Core.net.worldPosPrecision);
+            s += SerializerUtils.RequiredBitsFloat(Core.net.minWorldPos.y, Core.net.maxWorldPos.y, Core.net.worldPosPrecision);
+            s += SerializerUtils.RequiredBitsFloat(Core.net.minWorldPos.z, Core.net.maxWorldPos.z, Core.net.worldPosPrecision);
+
             return s;
         }
 

@@ -102,6 +102,7 @@ public static class SerializerUtils {
 
     public static int RequiredBitsFloat(float minValue = float.MinValue, float maxValue = float.MaxValue, float precision = 0.0000001f) {
         int intMax = (int)((maxValue - minValue + precision) * (1f / precision));
+        //Debug.Log("intmax: " + intMax);
         return (int)RequiredBitsInt(0, intMax);
     }
 

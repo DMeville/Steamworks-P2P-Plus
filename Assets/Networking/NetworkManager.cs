@@ -24,7 +24,19 @@ public class NetworkManager:SerializedMonoBehaviour {
     public int maxMessagesQueued = 255; //how many messages can be queued until we stop (so things don't spiral out too badly)
     public int maxPrefabs = 4095; //[0-maxPrefab] range for bitpacking.  The fewer prefabs we have, the better we can pack.  255 fits in 8 bits.  These are prefabs you can spawn over the network.
     public int maxNetworkIds = 4095; // sent over the net as (connectionNum) (networkId). since every client can spawn prefabs, this will ensure no overlap while not having to sync lists, or go through one player to ensure no overlap. 
-    
+    ///zones = scenes.  Zones are used to make sure players don't get events for an object in a difference scene.
+    //eg, player A is in zone 1, player b is in zone 2. Player A is trying to send an entity (for some reason) to b, so b
+    //rejects it because they're in different zones
+    //woldPos stuff is using in priorities, and is the most recent position a player was at.
+    //set min/max/precision to compress values better.
+    //this is like 3 bytes per player every send (~1 send per second) so pretty small.
+    public float SendConnectionMetadataTimer = 1f;
+    private float _sendConnectionMetadataTimer = 1f;
+    public int maxZones = 31;
+    public Vector3 minWorldPos = new Vector3(-1000, -1000, -1000);
+    public Vector3 maxWorldPos = new Vector3(1000, 1000, 1000);
+    public float worldPosPrecision = 1f;
+
     //public int maxStates = 255; //separate state defintions.  Need to do lookups so we know how to read/write custom state data.
     private int networkIds = 0;
     public int packetSize = 1024 * 2; //(udpkit default, dunno)
@@ -168,12 +180,12 @@ public class NetworkManager:SerializedMonoBehaviour {
             MessageCode.EntityControlResponse.Deserialize,
             MessageCode.EntityControlResponse.Process);
 
-        RegisterMessageType("SetConnectionData_Zone", //used to set connection metadata for all players
-            MessageCode.SetConnectionData_Zone.Peek,
-            MessageCode.SetConnectionData_Zone.Priority,
-            MessageCode.SetConnectionData_Zone.Serialize,
-            MessageCode.SetConnectionData_Zone.Deserialize,
-            MessageCode.SetConnectionData_Zone.Process);
+        RegisterMessageType("SetConnectionData", //used to set connection metadata for all players. (zone and player pos)
+            MessageCode.SetConnectionData.Peek,
+            MessageCode.SetConnectionData.Priority,
+            MessageCode.SetConnectionData.Serialize,
+            MessageCode.SetConnectionData.Deserialize,
+            MessageCode.SetConnectionData.Process);
         
 
         for(int i = 0; i < registerPrefabsOnStart.Count; i++) {
@@ -229,7 +241,7 @@ public class NetworkManager:SerializedMonoBehaviour {
 
     public int GetMessageCode(string messageName) {
         if(MessageCodes.Contains(messageName)) {
-            Debug.Log("MessageCode [" + messageName + "] : [" + MessageCodes.IndexOf(messageName) + "]");
+            //Debug.Log("MessageCode [" + messageName + "] : [" + MessageCodes.IndexOf(messageName) + "]");
             return MessageCodes.IndexOf(messageName);
         }
         throw new Exception("Message with name [" + messageName + "] does not exist");
@@ -329,13 +341,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         }
     }
 
-    public SteamConnection GetConnection(ulong steamId) {
-        if(connections[steamId] != null) {
-            return connections[steamId];
-        } else {
-            return null;
-        }
-    }
+    
 
     //prefab stuff
     public int RegisterPrefab(string prefabName, NetworkEntity prefab) {
@@ -461,6 +467,15 @@ public class NetworkManager:SerializedMonoBehaviour {
         return c;
     }
 
+    public SteamConnection GetConnection(ulong steamId) {
+        if(steamId == me.steamID) return me;
+        if(connections[steamId] != null) {
+            return connections[steamId];
+        } else {
+            return null;
+        }
+    }
+
     public bool IsEntityUpdateMsg(int msgCode) {
         return /*msgCode == GetMessageCode("SpawnPrefab") ||*/ msgCode == GetMessageCode("EntityUpdate");
     }
@@ -506,6 +521,8 @@ public class NetworkManager:SerializedMonoBehaviour {
         //Debug.Log("NetworkSend");
         UnityEngine.Profiling.Profiler.BeginSample("Network Send");
 
+
+
         if(NetworkSendEvent != null) NetworkSendEvent();
 
         foreach(SteamConnection sc in connections.Values) {
@@ -536,7 +553,12 @@ public class NetworkManager:SerializedMonoBehaviour {
                             if(m.entity == null) {
                                 m.priority = 0; //can't send this because our entity is GONE
                             } else {
-                                m.priority = m.entity.PriorityCaller(sc.steamID);
+                                //this checks the priority to whoever we are sending to
+                                //via distance check around their player
+                                //what if the entity we want to send is too far away from US for us to care about the entity
+                                //anymore and we want to destroy it locally?
+                                //do we do a separate check somewhere for that too?
+                                m.priority = m.entity.PriorityCaller(sc.steamID, true);
                             }
                         } else {
                             //normal message
@@ -661,7 +683,7 @@ public class NetworkManager:SerializedMonoBehaviour {
         //string s = stream.ReadString();
         while(readStream.CanRead() && readStream.CanRead(SerializerUtils.RequiredBitsInt(0, maxMessageTypes))) {
             int msgCode = (int)SerializerUtils.ReadInt(readStream, 0, maxMessageTypes);
-            Debug.Log("[REC] MessageCode: " + msgCode);
+            //Debug.Log("[REC] MessageCode: " + msgCode);
             if(msgCode == GetMessageCode("Empty")) {
                 AddToBandwidthInBuffer(-8);
                 break; //no more data, the rest of this packet is junk
@@ -774,6 +796,13 @@ public class NetworkManager:SerializedMonoBehaviour {
         foreach(var kvp in connections) {
             kvp.Value.timeSinceLastMsg += Time.fixedDeltaTime;
         }
+
+        _sendConnectionMetadataTimer -= Time.deltaTime;
+        if(_sendConnectionMetadataTimer <= 0f) {
+            _sendConnectionMetadataTimer = SendConnectionMetadataTimer;
+            Core.net.me.BroadcastMetadata();
+        }
+
         //network loop
         if(_networkSimulationTimer <= 0f) {
             _networkSimulationTimer = networkSimulationTimer;
@@ -856,7 +885,7 @@ public class NetworkManager:SerializedMonoBehaviour {
             //when this is called, we should STOP receving all state update
             //as we're about to move to a new scene
             me.zone = sceneIndex;
-            Core.net.QueueMessage(GetMessageCode("SetConnectionData_Zone"), me.zone);
+            //Core.net.QueueMessage(GetMessageCode("SetConnectionData"), me.zone);
             StartCoroutine("LoadSceneInternal", sceneIndex);
         }
     }

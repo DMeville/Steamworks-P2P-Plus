@@ -26,6 +26,9 @@ public class SteamConnection {
     //[HideInPlayMode]
     public List<NetworkMessage> messageQueue = new List<NetworkMessage>();
 
+    public NetworkEntity playerEntity = null; //the player in the world, we use this in priority checks
+    public Vector3 lastPosition = Vector3.zero; //if playerEntity != null, update this on everyone
+    //does everyone need to know this? or just local?
 
 
     public SteamConnection() {
@@ -51,8 +54,15 @@ public class SteamConnection {
         return zone == c.zone;
     }
 
+    public void BroadcastMetadata() {
+        if(playerEntity != null) {
+            lastPosition = playerEntity.transform.position;
+        } else {
+            lastPosition = Vector3.zero;
+        }
 
+        Core.net.QueueMessage(Core.net.GetMessageCode("SetConnectionData"), zone, lastPosition.x, lastPosition.y, lastPosition.z);
 
-
+    }
 }
 

@@ -841,6 +841,11 @@ MonoBehaviour:
   maxMessagesQueued: 255
   maxPrefabs: 255
   maxNetworkIds: 4095
+  SendConnectionMetadataTimer: 1
+  maxZones: 31
+  minWorldPos: {x: -10000, y: -10000, z: -10000}
+  maxWorldPos: {x: 10000, y: 10000, z: 10000}
+  worldPosPrecision: 1
   packetSize: 2048
   measureBandwidth: 1
   bandwidthBuffer: 10
@@ -852,6 +857,7 @@ MonoBehaviour:
   - {fileID: 114941469891307962, guid: edf9792a63f04d8488aa0f076aefde35, type: 2}
   - {fileID: 114941469891307962, guid: ec556ed862b5125439999788ca65f2b0, type: 2}
   - {fileID: 114941469891307962, guid: 9548357360879ae479f711ab6bc87e4d, type: 2}
+  - {fileID: 114835553021904356, guid: 2a5db4da67db4cf4b91b55b1408b455c, type: 2}
   me:
     steamID: 0
     connectionIndex: 0
@@ -861,6 +867,8 @@ MonoBehaviour:
     connectionEstablishedTime: 0
     timeSinceLastMsg: 0
     messageQueue: []
+    playerEntity: {fileID: 0}
+    lastPosition: {x: 0, y: 0, z: 0}
   connectionCounter: 0
   MessageCodes: []
   NetworkPrefabNames: []

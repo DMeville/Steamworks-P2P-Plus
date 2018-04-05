@@ -73,7 +73,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     //this is so you can define what data you need in the priority call (like xyz)
     //and it passes in that data.  Use only entity data that you are replicating via state
     //see CubeBehaviour for an example of this
-    public virtual float PriorityCaller(ulong sendTo) {
+    public virtual float PriorityCaller(ulong sendTo, bool isSending = true, params object[] args) {
         return 1f;
     }
 
@@ -120,7 +120,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
 
             if(queuedMessage[k.Key] == null) { //check if this entity already has a message queued to this connection
                 bool r = Core.net.QueueEntityMessage(k.Key, "EntityUpdate", this, this.prefabId, this.networkId, this.owner, this.controller);
-                Debug.Log("Queued Entity.Update");
+                //Debug.Log("Queued Entity.Update");
             } else {
                 //don't requeue it, there's still one in the queue waiting to go out.
                 //queued state updates serializes the most up to date data right before send
