@@ -50,6 +50,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     /// </summary>
     public virtual void OnSpawn(params object[] args) {
         lastStateUpdateRecTime = Time.realtimeSinceStartup;
+        Core.net.NetworkSendEvent += OnNetworkSend;
     }
 
     //dunno if we need this.  Might be able to detect when an entity hasn't been
@@ -65,7 +66,16 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
         else return false;
     }
 
-    public abstract void OnNetworkSend();
+    public virtual void OnNetworkSend() {
+        if(isController()) {
+            float p = PriorityCaller(Core.net.me.steamID, true);
+            if(p <= 0f) {
+                DestroyInternal();
+            } else {
+                QueueEntityUpdate();
+            }
+        }
+    }
 
     public abstract int Peek();
 
@@ -73,8 +83,37 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     //this is so you can define what data you need in the priority call (like xyz)
     //and it passes in that data.  Use only entity data that you are replicating via state
     //see CubeBehaviour for an example of this
-    public virtual float PriorityCaller(ulong sendTo, bool isSending = true, params object[] args) {
-        return 1f;
+    //this is a helper, this is called in the network look to get the priority for this entity
+    //override this here, otherwise it gets called with no args.
+    //you can reimpliment this if you need to send more data into priority (like playerTeam, or something)
+    //but by default all entity priorities only take xyz coords
+    public virtual float PriorityCaller(ulong steamId, bool isSending = true, params object[] args) { //
+        //if isSending is true, we don't pass in any args. But since we have the entity we can pass in the position directly
+        //this is kind of not as easy to use as I'd like.
+        float r = 0f;
+        if(ignoreZones) {
+            r = 1f;
+        } else {
+            if(Core.net.me.inSameZone(Core.net.GetConnection(steamId))) {
+                if(isSending) {
+                    r = Priority(steamId, this.transform.position.x, this.transform.position.y, this.transform.position.z);
+                } else {
+
+                    float x = (float)args[0];//need to read in whatever data we need from params here too..
+                    float y = (float)args[1];
+                    float z = (float)args[2];
+
+                    r = Priority(Core.net.me.steamID, x, y, z);
+                }
+            } else {
+                r = 0f;//not in the same zone, 
+            }
+        }
+        return r;
+    }
+
+    public float LinearDistancePriority(Vector3 entityPosition, ulong playerSteamId, float radius) {
+        return Mathf.Clamp(radius - Vector3.Distance(entityPosition, Core.net.GetConnection(playerSteamId).lastPosition), 0f, radius);
     }
 
     //entity priority takes xyz values, either from the entity on send, or the deserialized xyz from the message
@@ -87,6 +126,22 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     //deserialize is called on the prefab instance. You can NOT use instance properties in this method
     //they will cause errors because they will be the prefab values, NOT the entity values
     public abstract void Deserialize(ByteStream stream, int prefabId, int networkId, int owner, int controller);
+
+
+    /// <summary>
+    /// we assume x y z are args[0] args[1], args[2] as an entity needs that for priority checks (always?)
+    /// </summary>
+    /// <param name="prefabId"></param>
+    /// <param name="networkId"></param>
+    /// <param name="owner"></param>
+    /// <param name="controller"></param>
+    /// <param name="args"></param>
+    public void ProcessDeserialize(int prefabId, int networkId, int owner, int controller, params object[] args) {
+
+        if(PriorityCaller(Core.net.GetConnection(controller).steamID, false, args) > 0f) { //make sure we're getting an update we care about (same zone, etc)
+            Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, args);
+        }
+    }
 
     public virtual void TakeControl() {
         if(!isController()) { //don't need to ask for control if you're already the controller
@@ -108,7 +163,7 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
 
     public virtual void OnEntityUpdate(params object[] args) {
         lastStateUpdateRecTime = Time.realtimeSinceStartup;
-        
+
     }
 
     //this is queued to all connections, but sometimes removed before they get sent out (priority sorted)
@@ -190,6 +245,10 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
         Destroy(this.gameObject);
     }
 
+    public void OnDestroy() {
+        Core.net.NetworkSendEvent -= OnNetworkSend;
+    }
+
     //locally "destroys" the object when we send a request.  This is so it's instant for you, 
     //and eventually the owner will come clean it up
     //hook into this to spawn an explosion or whatever
@@ -213,7 +272,9 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
         return !isController() || !isFrozen(); //|| isPredictingControl; we don't want to send updates until we're sure we're the owner.
     }
 
-
+    /// <summary>
+    /// does some base logic for entity migration/scope
+    /// </summary>
     public virtual void Update() {
         if(!hasControl()) {
             //how long has it been since you received a state update?
@@ -229,8 +290,20 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
                     RequestEntityStatus(); //what if we never get a response? after x tries, just destroy it?
                 }
             }
+            SimulateReceiver();
+        } else {
+            SimulateController();
         }
-        //    SimulateOwner();
+        SimulateEntity();
+    }
+
+    public virtual void FixedUpdate() {
+        if(!hasControl()) {
+            SimulateReceiverFixed();
+        } else {
+            SimulateControllerFixed();
+        }
+        SimulateEntityFixed();
     }
 
     //sends a message to the controller asking if we can destroy this entity, or if we should
@@ -240,40 +313,61 @@ public abstract class NetworkEntity:SerializedMonoBehaviour {
     }
 
     public virtual void LateUpdate() {
-
-    }
-
-    public virtual void OnChangeOwner(int newOwner) {
-        if(isOwner()) {
-            //you are currently the owner, so you are sending this message, you need to apply the change first
-            //or should we apply the change when the event goes out? What if it never does...?
-            //if we do it instantly we have "local prediction" but we won't receieve any updates for it..
-            //additionally, what if we have a state udpate already queued that goes out AFTER?
-            //what if we queue a destroy while this is destroyed on this end, but not the other end?
-            //this event needs to go to everyone saying "hey, this player is the new owner"
-            //or at least people scoped into this entity
-            //the change request only needs to go to the current owner though.
-
-            //we can't predict this. We shouldn't.  Just wait until the owner stops sending updates.
-            //maybe we should only be able to take control if we are already the controller?
-            //there's an issue here:
-            //1) A is owner, B is nonthing.  B wants ownership. B sends request, A rec's and stop sending state. 
-            //Sets local entity to new owner, sends final event to everyone informing them of new owner. Makese sense
-
-            //2) A is owner, B is controller, C is nothing.  C wants ownership.  SEnds req to A.  A ISN"T sending state so it can't stop.
-            //A passes ownership to C. B still sends update.  Everyone rec's B's update, and updates the wrong (or a non-existant entity). ERROR
-
-            //3) A is owner, B is controller, C is nothing.  C wants ownership.  Sends req to C for control.  B relinquishes control to C, stops sending updates
-            //and sends C "you're in control now".  Once C gets control, asks A for ownership. Maybe at this point C can just take ownership since we're already sending updates.
-            //send everyone an event saying "hey, I took control of entity update your lists"
+        if(!hasControl()) {
+            SimulateReceiverLate();
+        } else {
+            SimulateControllerLate();
         }
-        //do the transfer.
-
+        SimulateEntityLate();
     }
 
-    //public abstract void SimulateOwner();
+    //public virtual void OnChangeOwner(int newOwner) {
+    //    if(isOwner()) {
+    //        //you are currently the owner, so you are sending this message, you need to apply the change first
+    //        //or should we apply the change when the event goes out? What if it never does...?
+    //        //if we do it instantly we have "local prediction" but we won't receieve any updates for it..
+    //        //additionally, what if we have a state udpate already queued that goes out AFTER?
+    //        //what if we queue a destroy while this is destroyed on this end, but not the other end?
+    //        //this event needs to go to everyone saying "hey, this player is the new owner"
+    //        //or at least people scoped into this entity
+    //        //the change request only needs to go to the current owner though.
 
+    //        //we can't predict this. We shouldn't.  Just wait until the owner stops sending updates.
+    //        //maybe we should only be able to take control if we are already the controller?
+    //        //there's an issue here:
+    //        //1) A is owner, B is nonthing.  B wants ownership. B sends request, A rec's and stop sending state. 
+    //        //Sets local entity to new owner, sends final event to everyone informing them of new owner. Makese sense
 
+    //        //2) A is owner, B is controller, C is nothing.  C wants ownership.  SEnds req to A.  A ISN"T sending state so it can't stop.
+    //        //A passes ownership to C. B still sends update.  Everyone rec's B's update, and updates the wrong (or a non-existant entity). ERROR
+
+    //        //3) A is owner, B is controller, C is nothing.  C wants ownership.  Sends req to C for control.  B relinquishes control to C, stops sending updates
+    //        //and sends C "you're in control now".  Once C gets control, asks A for ownership. Maybe at this point C can just take ownership since we're already sending updates.
+    //        //send everyone an event saying "hey, I took control of entity update your lists"
+    //    }
+    //    //do the transfer.
+
+    //}
+    //called only on the controller in the update loop
+    public virtual void SimulateController() { }
+    //called only on the receiver (!controller)
+    public virtual void SimulateReceiver() { }
+    //called on everyone, at the end of the internal update loop
+    public virtual void SimulateEntity() { }
+
+    //called only on the controller in the fixedupdate loop
+    public virtual void SimulateControllerFixed() { }
+    //called only on the receiver (!controller)
+    public virtual void SimulateReceiverFixed() { }
+    //called on everyone, at the end of the internal fixedupdate loop
+    public virtual void SimulateEntityFixed() { }
+
+    //called only on the controller in the lateupdate loop
+    public virtual void SimulateControllerLate() { }
+    //called only on the receiver (!controller)
+    public virtual void SimulateReceiverLate() { }
+    //called on everyone, at the end of the internal lateupdate loop
+    public virtual void SimulateEntityLate() { }
     /// <summary>
     /// Are you the owner of this entity?
     /// </summary>

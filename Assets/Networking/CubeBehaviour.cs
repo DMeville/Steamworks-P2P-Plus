@@ -140,10 +140,6 @@ public class CubeBehaviour : NetworkEntity {
         
     }
 
-    public override void OnChangeOwner(int newOwner) {
-        base.OnChangeOwner(newOwner);
-    }
-
     //triggered right before a packet is going out.  This is where you want to
     //queue the state update message
     public override void OnNetworkSend() {
@@ -196,32 +192,7 @@ public class CubeBehaviour : NetworkEntity {
         return s;
     }
 
-    //this is a helper, this is called in the network look to get the priority for this entity
-    //override this here, otherwise it gets called with no args.
-    public override float PriorityCaller(ulong steamId, bool isSending = true, params object[] args) { //
-
-        float r = 0f;
-        if(ignoreZones) {
-            r = 1f;
-        } else {
-            if(Core.net.me.inSameZone(Core.net.GetConnection(steamId))) {
-                if(isSending) {
-                    r = Priority(steamId, this.transform.position.x, this.transform.position.y, this.transform.position.z);
-                } else {
-
-                    float x = (float)args[0];//need to read in whatever data we need from params here too..
-                    float y = (float)args[1];
-                    float z = (float)args[2];
-
-                    r = Priority(Core.net.me.steamID, x, y, z);
-                }
-            } else {
-                r =0f;//not in the same zone, 
-            }
-        }
-        Debug.Log("CubeBehaviour.PriorityCaller::isSending: " + isSending + " : p: " + r);
-        return r;
-    }
+    
 
     //we should do a priority check while sending to remove messages to people who don't want it
     //we should also do a priority check when receving to filter out messages we don't want that might have been sent
@@ -281,14 +252,15 @@ public class CubeBehaviour : NetworkEntity {
         //eg, we can only use prefab values as we don't have an entity instance to work with
         //but we can push in any extra data if we really need to, we just need to modify it
         //we could pass in args, too..
-        if(PriorityCaller(Core.net.GetConnection(controller).steamID, false, x, y, z) > 0f) { //make sure we're getting an update we care about (same zone, etc)
-            Core.net.ProcessEntityMessage(prefabId, networkId, owner, controller, x, y, z, rotation, iValue, fValue);
-        }
+        //ProcessDeserialize();
+        //how can we simplify this?
+        //Process(prefabId, networkId, owner, controller, entityProps....)
+        //can we assume xyz are the first three entity props?
+        //will an entity ALWAYS have a position?
 
+        ProcessDeserialize(prefabId, networkId, owner, controller, x, y, z, iValue, fValue, rotation);
         
     }
 
-    public void OnDestroy() {
-        Core.net.NetworkSendEvent -= OnNetworkSend;
-    }
+ 
 }
