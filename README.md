@@ -13,7 +13,7 @@ All the good stuff is in NetworkManager.cs, methods called via Core.net or Netwo
 - Entity Migration
 - Bitpacked messages and Type Compression. Send a bool as 1 bit instead of 8, an int in the range of [0,10] as 4 bits instead of 16!
 - Priority Sorting of messages. Players closer to you will receive messages more often than players on the other side of the map.
-- Use a server-client model, a fully connected p2p graph, or something else entirely! Easy to extend!
+- Use a server-client model, a fully connected p2p graph, or something else entirely! Easy to extend! (Server-client only works if one player acts as the server. Doesn't work with dedicated servers because steamworks has no way to send data to a server that's not logged into any steam account)
 
 
 ## Usage
